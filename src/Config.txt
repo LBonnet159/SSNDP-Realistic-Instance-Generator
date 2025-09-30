@@ -1,0 +1,38 @@
++   Configuration parameters.
+defaultInstancePath=data/Instances
+defaultNetworkPath=data/Networks
+folder=TestDebugGenerator
+networkNb=50
+instanceNb=0
+preProcessingSSNDP=False
+doStatic=False
+networkSeed=
+demandSeed=
+
++   Network generation parameters.
+networkEmulationPath=
+randomGeneration=False
+capacity=1000
+rectangleWidth=1000
+rectangleHeight=1000
+targetNodeNb=40
+targetArcNb=
+targetDensity=0.1
+targetReciprocity=0.5
+decayRate=30
+hnRatio=0.2
+interArcsRatio=0.0
+connectedSpokesRatio=0.0
+ufCostRatio=0.1
+
++   Demand generation parameters.
+commodityNb=5000
+days=1
+hours=36
+quantityToCapacityMean=0.1
+quantityToCapacityDev=0.5
+flexibilityParameterMean=0.5
+flexibilityParameterDev=0.17
+criticalTime=1
+demandPatternMode=Random
+staircaseDistribution=[0.03,0.05,0.12,0.3,0.5,0.45,3]
