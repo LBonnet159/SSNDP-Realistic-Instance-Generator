@@ -11,7 +11,23 @@ from collections import Counter
 from Structures import Arc, Network, Instance, Commodity, InstanceGeneratorParams
 
 class InstanceGenerator:
+    """
+    Generate SNDP or SSNDP problem instances from a base network.
+
+    Supports:
+        - SNDP instance generation.
+        - SSNDP instance generation.
+        - Optional pre-processing for SSNDP time windows.
+    """
     def __init__(self, seed, params: InstanceGeneratorParams, network: Network):
+        """
+        Initialize an instance generator.
+
+        Args:
+            seed (int): Random seed for reproducibility.
+            params (InstanceGeneratorParams): Configuration parameters for instance generation.
+            network (Network): Base network used to derive arcs, travel times, and clusters.
+        """
         self.seed = seed
         self.params = params
         self.network = network
@@ -23,7 +39,17 @@ class InstanceGenerator:
 
     def generate(self):
         """
-        Generate sndp or ssndp instance based on input network. 
+        Generate an SNDP or SSNDP instance based on the input network.
+
+        Steps:
+            1. Convert arc distances into travel times (normalized to the length of the planning horizon).
+            2. Compute all-pairs travel times.
+            3. Identify valid origin–destination pairs and apply selection filters based on configuration parameters.
+            4. Generate commodities with quantities and (for SSNDP) time windows.
+            5. Optionally apply SSNDP preprocessing to use in solvers.
+
+        Raises:
+            ValueError: If fewer feasible commodities exist than requested.
         """
         # Find longest arc.
         longestArcDist = 0.0
@@ -69,6 +95,20 @@ class InstanceGenerator:
             print(f"Commodity number generated ({len(self.commodities)}) lower than commodity number asked ({self.params.commodityNb}).")
 
     def save(self, path, folder, basename: str, id: int):
+        """
+        Save the generated instance in a .txt format.
+
+        Args:
+            path (str): Output directory base path.
+            folder (str | None): Optional subfolder name.
+            basename (str): Base name for the file.
+            id (int): Instance ID, appended to filename.
+
+        Notes:
+            - Saves nodes, arcs, and commodities (with time data if SSNDP).
+            - Includes optional node/arc time windows if pre-processing is active.
+            - File format is compatible with other SSNDP tools in this project.
+        """
         if folder is not None:
             path += "/" + folder
         path = Path(path)
@@ -128,6 +168,16 @@ class InstanceGenerator:
         f.close()
 
     def generate_file_name(self, basename: str, id: int):
+        """
+        Generate a descriptive filename encoding key parameters.
+
+        Args:
+            basename (str): Base string for the filename.
+            id (int): Instance identifier.
+
+        Returns:
+            str: A filename summarizing generation parameters (ratios, horizon...).
+        """
         fileName = ""
         if not self.params.doStatic:
             fileName+="S"
@@ -156,6 +206,24 @@ class InstanceGenerator:
         return fileName
 
     def enumerate_timed_commodities(self, validPairs, travelTimes, flexibleTime):
+        """
+        Enumerate all feasible timed commodities for SSNDP.
+
+        For each valid pair, generate all (available, due) time combinations
+        within the horizon, applying flexibility and critical-time rounding
+        if the options are activated.
+
+        Args:
+            validPairs (list[tuple[int,int]]): Valid origin–destination pairs.
+            travelTimes (np.ndarray): Matrix of travel times.
+            flexibleTime (np.ndarray): Per-commodity flexibility durations.
+
+        Returns:
+            list[tuple[int,int,int,int]]: Feasible (src, dest, available, due) tuples.
+
+        Raises:
+            ValueError: If unfeasible timing combinations are produced.
+        """
         timedCandidates = []
         i = 0
         for src, dest in validPairs:
@@ -182,6 +250,21 @@ class InstanceGenerator:
         return timedCandidates
 
     def generate_timed_commodities(self, validPairs, travelTimes, flexibleTime):
+        """
+        Select a subset of feasible timed commodities.
+
+        Args:
+            validPairs (list[tuple[int,int]]): Valid origin destination pairs.
+            travelTimes (np.ndarray): Travel times matrix.
+            flexibleTime (np.ndarray): Array of flexibility times.
+
+        Returns:
+            list[tuple[int,int,int,int]]: Selected timed commodities.
+
+        Raises:
+            ValueError: If not enough feasible timed commodities exist.
+        """
+
         # Enumerate all possible timed commodities.
         candidates = self.enumerate_timed_commodities(validPairs, travelTimes, flexibleTime)
         if len(candidates) < self.params.commodityNb:
@@ -204,7 +287,13 @@ class InstanceGenerator:
 
     def generate_commodities_quantities(self):
         """
-        Generate commodities quantity as a truncated normal distribution.
+        Generate commodity quantities from a truncated normal distribution.
+
+        Quantities are drawn between 1% and 100% of the smallest arc capacity,
+        scaled by `quantityToCapaMean` and `quantityToCapaDev`.
+
+        Returns:
+            np.ndarray: Array of generated commodity quantities.
         """
         minCapacity = min([arc.capacity for arc in self.network.arcs])
         meanQuantity = minCapacity * self.params.quantityToCapaMean
@@ -217,7 +306,13 @@ class InstanceGenerator:
 
     def compute_travel_times(self):
         """
-        Compute travel time between all pairs.
+        Compute all-pairs travel times using Dijkstra’s algorithm.
+
+        Returns:
+            np.ndarray: Matrix of shortest travel times between all node pairs.
+
+        Raises:
+            Exception: If the configured time horizon is too small for the network.
         """
         allPairTime = InstanceGenerator.compute_all_pair_time(len(self.network.nodes), self.network.arcs)
 
@@ -234,6 +329,16 @@ class InstanceGenerator:
     
     @staticmethod
     def compute_all_pair_time(nodeNb, arcs: list[Arc]):
+        """
+        Compute all-pairs travel time matrix from arc list.
+
+        Args:
+            nodeNb (int): Number of nodes.
+            arcs (list[Arc]): List of directed arcs with `time` attribute.
+
+        Returns:
+            np.ndarray: Directed shortest-path matrix (∞ if unreachable).
+        """
         arcNb = len(arcs)
 
         adjMatrix = np.full((nodeNb, nodeNb), np.inf)
@@ -244,7 +349,15 @@ class InstanceGenerator:
 
     def generate_preprocessings(self):
         """
-        Pre-processes a SSNDP instance.
+        Preprocess an SSNDP instance to compute node and arc time windows.
+
+        For each commodity:
+            - Compute feasible time windows at each node (earliest arrival, latest departure).
+            - Derive arc time windows from node windows and arc travel times.
+
+        Notes:
+            - Time windows with lb > ub are discarded.
+            - Results are stored in `timeWindowsNode` and `timeWindowsArc`.
         """
         nodeNb = len(self.network.nodes)
         arcNb = len(self.network.arcs)
@@ -283,9 +396,19 @@ class InstanceGenerator:
 
     def select_valid_pairs(self, validPairs):
         """
-        Apply active pair-selection modifiers (sameRegionRatio, disparityRatio, etc.)
-        and return the final list of selected O-D pairs.
+        Apply selection filters on origin destination pairs.
+
+        Filters include:
+            - Disparity ratio
+            - Same-region ratio
+
+        Args:
+            validPairs (list[tuple[int,int]]): All valid origin destination pairs.
+
+        Returns:
+            list[tuple[int,int]]: Filtered and shuffled valid origin destination pairs.
         """
+
         # Start with full set
         selectedPairs = validPairs.copy()
 
@@ -309,7 +432,15 @@ class InstanceGenerator:
         return selectedPairs
 
     def same_region_generation(self, validPairs):
-        """Split pairs into same-region and different-region lists."""
+        """
+        Split valid origin destination pairs into same cluster and distinct cluster sets.
+
+        Args:
+            validPairs (list[tuple[int,int]]): Valid origin destination pairs.
+
+        Returns:
+            tuple[list, list]: (sameRegionPairs, diffRegionPairs)
+        """
         sameRegionPairs = []
         diffRegionPairs = []
         for src, dest in validPairs:
@@ -320,6 +451,21 @@ class InstanceGenerator:
         return sameRegionPairs, diffRegionPairs
 
     def disparity_ratio_generation(self, validPairs):
+        """
+        Apply disparity ratio to skew commodity distribution across clusters.
+
+        Implements a discrete power-law distribution to control
+        how origins/destinations are biased toward specific clusters.
+
+        Args:
+            validPairs (list[tuple[int,int]]): Candidate origin destination pairs.
+
+        Returns:
+            list[tuple[int,int]]: Filtered list of origin destination pairs following the ratio.
+
+        Notes:
+            Prints a warning if quotas cannot be met with available candidates.
+        """
         # Compute the number of clusters.
         clusters = list({self.network.nodes[i].clusterId for pair in validPairs for i in pair})
         clusterNb = len(clusters)
@@ -362,13 +508,17 @@ class InstanceGenerator:
     
     def distribution_pattern(self, candidates):
         """
-        Given a list of candidate timed commodities, select the one to generate
-        from the parameter distributionPattern. 
-        
-        Notes
-        -----
-        If there are not enough candidates for some time slots, other time slots
-        are chosen randomly.
+        Select timed commodities according to a temporal distribution pattern.
+
+        Args:
+            candidates (list[tuple[int,int,int,int]]): All feasible timed commodities.
+
+        Returns:
+            list[tuple[int,int,int,int]]: Selected commodities matching the distribution pattern.
+
+        Notes:
+            - Uses `params.distributionPattern` as a probability vector over time slots.
+            - If insufficient candidates exist in some slots, random pairs from other time slots are used as a fallback.
         """
         dist = np.array(self.params.distributionPattern, dtype=float)
 

@@ -5,6 +5,37 @@ from Structures import Network
 from pathlib import Path
 
 def main():
+    """
+    Main entry point for the (S)SNDP realistic instance generator.
+
+    This script performs the generation process in three main steps:
+    1. Load configuration parameters from the configuration file.
+    2. Generate synthetic or emulated networks according to specified CNA parameters.
+    3. Generate SNDP or SSNDP instances based on those networks. Optionally with pre-processings.
+
+    Usage
+    -----
+    Simply run:
+        python main.py
+
+    The configuration file Config.txt defines all parameter combinations and paths, including:
+    - Number of networks and instances to generate
+    - Network structure options (hub ratio, reciprocity...)
+    - Instance options (number of commodities, horizon....)
+    - Folder and base path locations for saving output and input path for emulation
+
+    Outputs
+    -------
+    - Network files (.txt) stored in `defaultNetworkPath[/folder]`
+    - Instance files (.txt) stored in `defaultInstancePath[/folder]`
+
+    Notes
+    -----
+    - Networks can either be generated procedurally (in a random or hub-and-spoke way) or emulated from a saved network file.
+    - Instance generation supports both static (SNDP) and time-dependent (SSNDP) variants.
+    - Each combination of parameters produces multiple runs if requested.
+    - Parameters can be either given a single value, or a list of values for multiple parameter combination.
+    """
     config = Config.from_file()
 
     # Resolve save paths.

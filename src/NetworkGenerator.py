@@ -10,7 +10,22 @@ from pathlib import Path
 from Structures import Node, Arc, NetworkGeneratorParams, Network
 
 class NetworkGenerator:
+    """
+    Generates hub-and-spoke or random networks with specified structural properties.
+
+    Supports:
+        - Purely random network generation.
+        - Structured hub-and-spoke generation.
+        - Network emulation based on an input reference network.
+    """
     def __init__(self, seed: int | None, params: NetworkGeneratorParams):
+        """
+        Initialize the network generator.
+
+        Args:
+            - seed (int | None): Seed for reproducibility. If None, uses non-deterministic randomness.
+            - params (NetworkGeneratorParams): Configuration parameters controlling generation.
+        """
         self.seed = seed
         self.params = params
         self.rng = random.Random(0)
@@ -31,36 +46,22 @@ class NetworkGenerator:
         """
         Generate hub-and-spoke networks that emulate the structure of an existing network.
 
-        This method reads a reference network specified in the configuration file and generates
+        The method reads a reference network specified in the configuration file and generates
         a pool of candidate networks that have the following similar characteristics: node number,
         density, reciprocity.
-        It then selects the *networkNb* candidates that have the closest *assortativity*,
-        *average clustering coefficient*, and *characteristic path length* values to that of the
-        reference network.
+        It then selects the `networkNb` networks with the smallest distance from 
+        the reference network in terms of assortativity, clustering coefficient, 
+        and average shortest path length.
 
-        Parameters
-        ----------
-        networkNb
-            Number of networks to generate during the network emulation.
-        
-        Config
-        ------
-        The following parameters are related to the method:
-            - *networkEmulationPath* : str
-                Path to the reference network file.
-            - *emulationTimeLimit* : float
-                Time limit (in seconds) for generating candidates.
-            - *networkSeed* : int, optional
-                Random seed for reproducibility (optional).
+        Args:
+            networkNb (int): Number of best networks to retain after emulation.
 
-        Returns
-        -------
-        list[NetworkGenerator]
-            The *networkNb* networks that best emulate the reference network.
+        Returns:
+            list[Network]: The `networkNb` generated networks most similar to the reference.
 
-        Notes
-        -----
-        The selection is based on a normalized absolute distance metric:
+        Notes:
+            - Uses normalized absolute distance on selected metrics for similarity scoring.
+            - If the reference network has coordinates, its bounding box defines spatial limits.
         """
         if (self.params.networkEmulationPath is None):
             raise ValueError("Path to network to emulate not specified. Specify in Config.txt file.")
@@ -159,7 +160,20 @@ class NetworkGenerator:
 
     def generate(self, id=None):
         """
-        Network generation main entry-point.
+        Generate a single network according to configured parameters.
+
+        Depending on settings, produces either a random or structured
+        hub-and-spoke network and ensures weak connectivity.
+
+        Args:
+            id (int, optional): Identifier to reproduce a specific random instance.
+
+        Returns:
+            Network: The generated directed network.
+
+        Notes:
+            - Automatically computes target arc count and reciprocity if not specified.
+            - Can optionally visualize the generated layout for debugging.
         """
         # Set seed for reproductibility.
         networkSeed = self.rng.randint(0, 2**32-1)
@@ -197,11 +211,14 @@ class NetworkGenerator:
 
     def random_generation(self):
         """
-        Generates a random network. 
-        
-        Nodes are generated randomly in the range [0,1].
-        Arcs are generated randomly.
-        If a reciprocity is given it is used in the generation.
+        Generate a purely random directed network.
+
+        Nodes are placed uniformly in [0,1] x [0,1].
+        Arcs are created randomly until the target arc count is reached,
+        optionally enforcing reciprocity.
+
+        Notes:
+            Uses `targetReciprocity` if specified.
         """
 
         useReciprocity = self.params.targetReciprocity is not None
@@ -221,7 +238,14 @@ class NetworkGenerator:
 
     def node_generation(self):
         """
-        Generate the clustered nodes of the hub-and-spoke network.
+        Generate clustered nodes for a hub-and-spoke network.
+
+        Each cluster corresponds to one hub and its spokes.
+        Node coordinates are drawn around cluster centers using an exponential decay.
+
+        Notes:
+            - The number of clusters equals ceil(hnRatio * targetNodeNb).
+            - All nodes are bounded within [0,1] x [0,1].
         """
          
         # We set the number of clusters.
@@ -264,8 +288,17 @@ class NetworkGenerator:
 
     def arc_generation(self):
         """
-        Generate the arcs of the hub-and-spoke network.
-        Clustered nodes must have been generated by the generator beforehand.
+        Generate arcs for a hub-and-spoke network.
+
+        Steps:
+            1. Connect hubs to form a backbone.
+            2. Connect spokes to their cluster hub.
+            3. Add intra-cluster (spoke–spoke) arcs.
+            4. Add inter-cluster (cross-cluster) arcs.
+            5. Fill remaining arc budget randomly.
+
+        Raises:
+            Exception: If arc budget too low for weak connectivity.
         """
         nodeNb = len(self.nodes)
         if (nodeNb != self.params.targetNodeNb):
@@ -309,7 +342,7 @@ class NetworkGenerator:
 
     def generate_hub_hub_arcs(self):
         """
-        Backbone generation, link hub spokes to other hub spokes.
+        Generate reciprocal backbone arcs between hubs.
         """
         # If generating a complete network of hub nodes isn't possible, 
         # we find the maximum number of neighbors per hub possible.
@@ -340,7 +373,7 @@ class NetworkGenerator:
 
     def generate_same_cluster_hub_spoke_arcs(self):
         """
-        Generates arcs between spoke nodes and their hub node.
+        Generate arcs between each hub and its associated spokes.
         """
         # First pass, generate an arc randomly between each spoke and its related hub.
         for i in range(len(self.hubsId)):
@@ -366,7 +399,7 @@ class NetworkGenerator:
 
     def compute_intra_arc_nb(self, arcBudget):
         """
-        Computes the number of intra arcs to generate.
+        Compute number of intra-cluster arcs based on remaining arc budget.
         """
         clusterNb = len(self.hubsId)
 
@@ -381,7 +414,7 @@ class NetworkGenerator:
 
     def compute_inter_arc_nb(self, arcBudget):
         """
-        Computes the number of inter arcs to generate.
+        Compute number of inter-cluster arcs based on remaining arc budget.
         """
         clusterNb = len(self.hubsId)
 
@@ -398,7 +431,7 @@ class NetworkGenerator:
     
     def generate_same_cluster_spoke_spoke_arcs(self, targetIntraArcNb):
         """
-        Generate intra arcs (i.e. arcs between spokes of the same cluster).
+        Generate arcs between spokes within the same cluster.
         """
         if targetIntraArcNb == 0:
             return
@@ -414,8 +447,7 @@ class NetworkGenerator:
 
     def generate_distinct_cluster_spoke_spoke_arcs(self, targetInterArcNb):
         """
-        Generate inter arcs (i.e. arcs between spokes of different cluster).
-        Arcs are generated by linking spokes of high degree.
+        Generate arcs between spokes within distinct clusters.
         """
         if targetInterArcNb == 0:
             return
@@ -442,8 +474,7 @@ class NetworkGenerator:
 
     def enumerate_list_pairs(self, list):
         """
-        Enumerate candidate node pairs not yet linked
-        of the same cluster.
+        Enumerate unconnected candidate node pairs within the same cluster.
         """
         nodePairs = []
         for i in range(len(list)-1):
@@ -456,8 +487,7 @@ class NetworkGenerator:
 
     def enumerate_lists_pairs(self, list1, list2):
         """
-        Enumerate candidate node pairs not yet linked
-        between two clusters.
+        Enumerate unconnected candidate node pairs between clusters.
         """
         nodePairs = []
         for i in list1:
@@ -469,6 +499,9 @@ class NetworkGenerator:
         return nodePairs
 
     def generate_shuffle_reciprocity_arcs(self, candidatePairs, maxArcNb):
+        """
+        Randomly select candidate pairs and generate arcs with reciprocity.
+        """
         newArcNb = 0
         k = 0
         random.shuffle(candidatePairs)
@@ -480,6 +513,9 @@ class NetworkGenerator:
             k += 1
 
     def generate_cluster_node(self, clusterCenter):
+        """
+        Sample node coordinates around a cluster center using exponential decay.
+        """
         distance = np.random.exponential(scale=1/self.params.decayRate)
         angle = np.random.uniform(0, 2*np.pi)
         x = clusterCenter[0] + distance * np.cos(angle)
@@ -487,20 +523,34 @@ class NetworkGenerator:
         return (x,y)
 
     def get_arc_distance(self, iId, jId):
-        xI = self.nodes[iId].x * self.params.bboxWidth
-        xJ = self.nodes[jId].x * self.params.bboxWidth
-        yI = self.nodes[iId].y * self.params.bboxHeight
-        yJ = self.nodes[jId].y * self.params.bboxHeight
+        """
+        Compute Euclidean distance between two nodes using bounding box scale if specified.
+        """
+        width=1
+        height=1
+        if self.params.bboxWidth is not None and self.params.bboxHeight is not None:
+            width=self.params.bboxWidth
+            height=self.params.bboxHeight
+        xI = self.nodes[iId].x * width
+        xJ = self.nodes[jId].x * width
+        yI = self.nodes[iId].y * height
+        yJ = self.nodes[jId].y * height
         xx = xI - xJ
         yy = yI - yJ
         return math.sqrt(xx**2 + yy**2)
 
     def get_arc_costs(self, distance):
+        """
+        Compute fixed and unit costs proportional to arc length.
+        """
         fixedCost = round(distance*0.5*60*0.55,5)
         unitCost = round(self.params.ufCostRatio*fixedCost/self.params.capacity, 5)
         return (fixedCost, unitCost)
     
     def get_new_arc(self, idFrom, idTo):
+        """
+        Create a new directed arc between nodes with distance-based costs.
+        """
         distance = self.get_arc_distance(idFrom, idTo)
         fixedCost, unitCost = self.get_arc_costs(distance)
         return Arc(
@@ -514,8 +564,15 @@ class NetworkGenerator:
     
     def reciprocity_arc_generation(self, useReciprocity, idFrom, idTo):
         """
-        Generates either reciprocal arcs bewteen nodes idFrom and idTo, 
-        or only one randomly chosen.
+        Generate arcs between two nodes with or without reciprocity.
+
+        Args:
+            useReciprocity (bool): Whether reciprocity is applied, if not both arcs are generated.
+            idFrom (int): Source node index.
+            idTo (int): Target node index.
+
+        Returns:
+            list[Arc]: One or two arcs depending on reciprocity.
         """
         newArcs = []
         if (not useReciprocity) or (random.random() < self.adjustedR):
@@ -529,13 +586,21 @@ class NetworkGenerator:
         return newArcs
 
     def update_arc_pairs(self, newArcs: list[Arc]):
+        """
+        Add new arcs and record their directed pairs.
+        """
         self.arcs += newArcs
         for arc in newArcs:
             self.pairs.add((arc.src, arc.dest))
 
     def compute_arc_number(self):
         """
-        Computes the arc budget depending on the parameter specified by the user.
+        Compute target number of arcs from either:
+            - targetArcNb
+            - targetDensity
+
+        Raises:
+            ValueError: If neither is defined.
         """
         maxArcNb = self.params.targetNodeNb*(self.params.targetNodeNb-1)
         if (self.params.targetArcNb is not None):
@@ -559,6 +624,9 @@ class NetworkGenerator:
             pairCheck.add((arc.src,arc.dest))
     
     def plot_network(self):
+        """
+        Plots the current nodes of the generator. The plot is saved in the current active directory.
+        """
         spokes=[]
         hubs=[]
 
@@ -577,7 +645,7 @@ class NetworkGenerator:
         plt.ylim(0, 1)
         plt.legend()
         plt.gca().set_aspect('equal', adjustable='box')
-        plt.savefig("network.png", dpi=300, bbox_inches="tight")
+        plt.savefig("generated_network.png", dpi=300, bbox_inches="tight")
 
     def clear(self):
         self.nodes.clear()
