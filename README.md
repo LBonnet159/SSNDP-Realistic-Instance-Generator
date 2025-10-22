@@ -26,7 +26,7 @@ src/
 data/
     ├── Networks/                # Default path for generated networks
     ├── Instances/               # Default path for generated instances
-    └── Networks/SetBenchmarks/  # Benchmark networks used in the article
+    └── Networks/Benchmark/      # Benchmark networks used in the article
 ```
 
 ## Running the Generator
