@@ -3,57 +3,88 @@ This archive is distributed under the MIT license.
 
 The software and data in this repository were used in the research reported in the article "A Complex Network Analysis Approach for Generating Realistic Instances of the Scheduled Service Network Design Problem" by Louis Bonnet, Simon Belieres, Mike Hewitt, and Sandra Ulrich Ngueveu.
 
-## Description
-The Service Network Design Problem (SNDP), and its timed variant the Scheduled SNDP (SSNDP), are challenging optimization problems. This code generates instances for these problems, consisting of a list of nodes, arcs, and commodities.
+## Overview
+The Service Network Design Problem (SNDP), and its timed variant the Scheduled SNDP (SSNDP), are challenging optimization problems arising in freight and transportation systems. This software generates realistic instances for these problems based on the literature on Complex Networks.
 
-The [src/](src/) directory contains the generator's source python (.py) code and the configuration [Config.txt](src/Config.txt) file. The [data/](data/) directory contains folders [Networks/](data/Networks/) and [Instances/](data/Instances). Networks and instances are generated in and read from these respective folders by default. The 180 networks presented in the article "A Complex Network Analysis Approach for Generating Realistic Instances of the Scheduled Service Network Design Problem" are found in the directory [SetBenchmarks/](data/Networks/SetBenchmarks/).
+Each instance, either of the SNDP or the SSNDP, consists of:
++ A __directed network__ with nodes and arcs
++ A __set of commodities__
 
-## Generating instances
-In order to run the generator, type:
+Networks and instances can be generated using __controlled parameters__ that govern structural features such as __density__, __reciprocity__, and __hub–spoke organization__.
+
+## Repository Structure
+
+```bash
+src/
+    ├── Config.py                # Configuration parsing and validation
+    ├── Structures.py            # Core data structures (nodes, arcs, commodities)
+    ├── NetworkGenerator.py      # Network generator (hub-and-spoke, random, and emulation)
+    ├── InstanceGenerator.py     # Instance and demand generator
+    ├── main.py                  # Entry point for execution
+    └── Config.txt               # Configuration file
+
+data/
+    ├── Networks/                # Default path for generated networks
+    ├── Instances/               # Default path for generated instances
+    └── Networks/SetBenchmarks/  # Benchmark networks used in the article
+```
+
+## Running the Generator
+To generate networks and instances, run:
 ```
 python src/main.py
 ```
+The generator automatically reads parameters from [Config.txt](src/Config.txt).
 
-### Inputs
-All the parameters of the generator are read from file [Config.txt](src/Config.txt). The range, type, and usage of the parameters are:
+By default, generated networks are stored in [Networks/](data/Networks/), and generated instances in [Instances/](data/Instances/).
 
-(general configuration parameters)
-+ _defaultInstancePath_ $\in$ absolute or relative path, default=data/Instances ; path to read/write (S)SNDP instances
-+ _defaultNetworkPath_ $\in$ absolute or relative path, default=data/Networks ; path to read/write networks
-+ _folder_ $\in$ string ; folder name in which to read/write instances/networks at related default path
-+ _networkNb_ $\in \mathbb{N}_{>0}$ ; number of networks to generate
-+ _instanceNb_ $\in \mathbb{N}_{>0}$ ; number of instances to generate per network
-+ _networkSeed_ $\in \mathbb{N}_{>0}$ ; (optional) seed to use when generating networks
-+ _demandSeed_ $\in \mathbb{N}_{>0}$ ; (optional) seed to use when generating (S)SNDP instances
+## Configuration File
+All parameters are read from file [Config.txt](src/Config.txt).
 
-(network generation parameters)
-+ _networkEmulationPath_ $\in$ absolute path ; absolute path to the network to emulate
-+ _networkEmulationTimeLimit_ $\in \mathbb{R}_{>0}$ ; time limit of the network emulation
-+ _randomGeneration_ $\in \mathbb{B}$ ; whether to generate the network randomly or in a structured hub-and-spoke manner
-+ _capacity_ $\in \mathbb{R}_{>0}$ ; capacity of the arcs of the generated network
-+ _bboxWidth_ $\in \mathbb{R}_{>0}$ ; width of the bounding box of the generated network
-+ _bboxHeight_ $\in \mathbb{R}_{>0}$ ; height of the bounding box of the generated network
-+ _targetNodeNb_ $\in \mathbb{N}_{>0}$ ; number of nodes to generate
-+ _targetArcNb_ $\in \mathbb{N}_{>0}$ ; arc budget
-+ _targetDensity_ $\in [0,1]$ ; density of the network to generate, derived to an arc budget
-+ _targetReciprocity_ $\in [0,1]$ ; reciprocity to reach on average
-+ _decayRate_ $\in \mathbb{R}_{>0}$ ; decay rate of the clustered nodes generation
-+ _hnRatio_ $\in ]0,1]$ ; ratio between the number of hub nodes and the total number of nodes
-+ _ufCostRatio_ $\in \mathbb{R}_{>0}$ ; ratio between the unit and fixed costs
+The file is organized in three sections:
+### General Parameters
 
-(demand generation parameters)
-+ _doStatic_ $\in \mathbb{B}$ ; whether to produce a SNDP or a SSNDP instance
-+ _commodityNb_ $\in \mathbb{N}_{>0}$ ; number of commodities to generate
-+ _quantityToCapaMean_ $\in [0,1]$ ; mean of the truncated normal distribution of the commodities quantity relative to the arcs capacity
-+ _quantityToCapaDev_ $\in [0,1]$ ; standard deviation of the truncated normal distribution of the commodities quantity relative to the arcs capacity
-+ _sameRegionRatio_ $\in [0,1]$ ; (optional) ratio of commodities whose origin and destination lie in the same cluster
-+ _disparityRatio_ $\in [0,1]$ ; (optional) likelihood of origins and destinations to be spread evenly across clusters or not (0 = even spread, 1 = uneven spread) 
-+ _horizon_ $\in \mathbb{N}_{>0}$ ; length of the planning horizon
-+ _flexibilityMean_ $\in  [0,1]$ ; mean of the truncated normal distribution of the flexibility, relative to the shortest path length
-+ _flexibilityDev_ $\in [0,1]$ ; standard deviation of the truncated normal distribution of the flexibility, relative to the shortest path length
-+ _criticalTime_ $\in \mathbb{N}_{>0}$ ; (optional) critical time to round down considered available times, and round up considered due times
-+ _distributionPattern_ $\in [0,1]^{\textit{horizon}}$ ; (optional) probability distribution of the available times over the planning horizon
-+ + _preProcessingSSNDP_ $\in \mathbb{B}$ ; add pre-processings to generated SSNDP instances
+| Parameter             | Type    | Description                                                   |
+| --------------------- | ------- | ------------------------------------------------------------- |
+| `defaultInstancePath` | Path    | Default path for reading/writing instances (`data/Instances`) |
+| `defaultNetworkPath`  | Path    | Default path for reading/writing networks (`data/Networks`)   |
+| `folder`              | str     | Optional subfolder for organizing runs                        |
+| `networkNb`           | int > 0 | Number of networks to generate                                |
+| `instanceNb`          | int > 0 | Number of instances to generate per network                   |
+| `networkSeed`         | int > 0 | Optional seed for reproducible network generation             |
+| `demandSeed`          | int > 0 | Optional seed for reproducible demand generation              |
+
+### Network Generation Parameters
+
+| Parameter                   | Type          | Description                                                              |
+| --------------------------- | ------------- | ------------------------------------------------------------------------ |
+| `networkEmulationPath`      | Path          | If provided, emulate an existing network instead of generating a new one |
+| `networkEmulationTimeLimit` | float > 0     | Time limit for network emulation                                         |
+| `randomGeneration`          | bool          | Whether to use random or structured hub-and-spoke generation             |
+| `capacity`                  | float > 0     | Capacity of each arc                                                     |
+| `bboxWidth`, `bboxHeight`   | float > 0     | Dimensions of the bounding box for arc distance                        |
+| `targetNodeNb`              | int > 0       | Number of nodes                                                          |
+| `targetArcNb`               | int > 0       | Arc budget (optional alternative to density)                             |
+| `targetDensity`             | float ∈ [0,1] | Desired network density                                                  |
+| `targetReciprocity`         | float ∈ [0,1] | Desired proportion of bidirectional arcs                                         |
+| `decayRate`                 | float > 0     | Decay rate controlling how spread out clusters are                               |
+| `hnRatio`                   | float ∈ (0,1] | Ratio of hub nodes to total nodes                                        |
+| `ufCostRatio`               | float > 0     | Ratio between unit and fixed costs                                       |
+
+### Demand Generation Parameters
+
+| Parameter                                 | Type          | Description                                                                 |
+| ----------------------------------------- | ------------- | --------------------------------------------------------------------------- |
+| `doStatic`                                | bool          | If true, generate SNDP; otherwise, generate SSNDP                           |
+| `commodityNb`                             | int > 0       | Number of commodities                                                       |
+| `quantityToCapaMean`, `quantityToCapaDev` | float ∈ [0,1] | Mean and standard deviation of commodity size relative to arc capacity      |
+| `sameRegionRatio`                         | float ∈ [0,1] | Ratio of commodities with origin-destinations lying in the same cluster     |
+| `disparityRatio`                          | float ∈ [0,1] | Likelihood of uneven distribution of demand origins/destinations            |
+| `horizon`                                 | int > 0       | Planning horizon (time periods)                                             |
+| `flexibilityMean`, `flexibilityDev`       | float ∈ [0,1] | Distribution of time flexibility relative to shortest path                  |
+| `criticalTime`                            | int > 0       | Time rounding for available and due times                                   |
+| `distributionPattern`                     | list[float]   | Probability distribution of available times, size must be equal to horizon  |
+| `preProcessingSSNDP`                      | bool          | Whether to add preprocessing information (time windows) for SSNDP instances |
 
 The range of the parameters is checked before the generation and an error is reported to the user if incoherent values are given.
 
@@ -61,35 +92,53 @@ In order to produce networks and instances with different inputs more easily, va
 be written as lists. For instance, if _targetDensity_=[0.2,0.5,0.8], and all other parameters have a single value (e.g. , _targetReciprocity_=0.5), three sets of configuration paremeters
 will be used.
 
-### Output format
+## Parameter Combinations
+Any parameter in `Config.txt` can take multiple values (as a list).
 
-We detail the format of the outputs of the generator.
+All combinations across parameters are automatically enumerated.
 
-#### Ouputs name label
-Generated networks and instances are named according to some of the parameters used during the generation (the one that influence the generation procedure). We list now the label of each parameter when naming an output. 
+Example:
+```bash
+targetDensity=[0.2,0.5,0.8]
+targetReciprocity=0.5
+```
+Generates three sets of networks with the same reciprocity and varying densities.
 
-First, in the case of the network generation:
-+ _decayRate_: DR
-+ _hubNodeRatio_: A
-+ _ufCostRatio_: UF
-+ _targetReciprocity_: R
-+ _targetDensity_: D
-+ _targetNodeNb_: N
-+ _networkSeed_: S
+The software validates all parameter values before execution. An error is returned to the user if incoherent values are detected.
 
-Second, in the case of the (S)SNDP instance generation:
-+ _quantityToCapaMean_: MCQ
-+ _quantityToCapaDev_: DCQ
-+ _sameRegionRatio_: SR
-+ _disparityRatio_: DR
-+ _targetCommodityNb_: N
-+ _horizon_: H
-+ _flexibilityMean_: FM
-+ _flexibilityDev_: FD
-+ _criticalTime_: CT
-+ _demandSeed_: S
+## Output Specification
 
-The labels are written with the value of the associated parameter. For parameters in the range [0,1], the value is multiplied by 100 and rounded. To differentiate networks or instances generated at the same time with the same input parameters, we also add label I, associated with the index of the generation, _networkIdx_ for the network, _instanceIdx_ for the instance. Finally, SNDP instances have the prefix SNDP, while SSNDP instances have the prefix SSNDP.
+### File Naming Convention
+Each generated network or instance file includes encoded parameters in its name.
+
+#### Networks
+| Parameter           | Label |
+| ------------------- | ----- |
+| `decayRate`         | DR    |
+| `hubNodeRatio`      | A     |
+| `ufCostRatio`       | UF    |
+| `targetReciprocity` | R     |
+| `targetDensity`     | D     |
+| `targetNodeNb`      | N     |
+| `networkSeed`       | S     |
+
+#### (S)SNDP Instances
+| Parameter            | Label |
+| -------------------- | ----- |
+| `quantityToCapaMean` | MCQ   |
+| `quantityToCapaDev`  | DCQ   |
+| `sameRegionRatio`    | SR    |
+| `disparityRatio`     | DR    |
+| `horizon`            | H     |
+| `flexibilityMean`    | FM    |
+| `flexibilityDev`     | FD    |
+| `criticalTime`       | CT    |
+| `demandSeed`         | S     |
+
+Values in [0,1] are scaled by 100 and rounded.
+Additional suffixes:
++ I: Index of the generated file (e.g., I0)
++ Prefix SNDP_ or SSNDP_ indicates the instance type
 
 Examples of outputs names:
 + DR30_A1_UF5_R20_D5_N50_I0_S0: network with _decayRate_=30 ; _hubNodeRatio_=0.01 ; _ufCostRatio_=0.05 ; _targetReciprocity_=0.2 ; _targetDensity_=0.05 ; _targetNodeNb_=50 ; _networkIdx_=0 ; _networkSeed_=0
