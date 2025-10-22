@@ -21,6 +21,8 @@ src/
     ├── NetworkGenerator.py      # Network generator (hub-and-spoke, random, and emulation)
     ├── InstanceGenerator.py     # Instance and demand generator
     ├── main.py                  # Entry point for execution
+    ├── environment.yml          # Environment configuration for conda.
+    ├── requirements.txt         # Environment requirements for pip.
     └── Config.txt               # Configuration file
 
 data/
@@ -178,6 +180,10 @@ Some remarks:
 + The horizon is only given for SSNDP instance files.
 + The distribution pattern is only given for SSNDP instance files where the associated parameter was specified.
 + The two lists of time windows (for arcs and nodes) are given only for SSNDP instance files when the parameter _preProcessingSSNDP_=True.
+
+## Reproducibility Instructions
+
+This project is designed to be fully reproducible using either `pip` or `conda`. Use either `requirements.txt` or `environment.yml` to do so.
 
 ## How to contribute
 Thank you for considering contributing to our project! To report bugs and ask questions, please refer to the issue tracker. You can also address a problem by (1) forking the project, (2) correcting the bug / adding a feature, and (3) generating a pull request. However, we recommend that you first contact the authors and discuss the desired feature request.
