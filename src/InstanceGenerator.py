@@ -269,8 +269,8 @@ class InstanceGenerator:
         
         # Select candidates according to user specified options.
         selected = []
-        if self.distribution_pattern is not None:
-            selected = self.distribution_pattern(candidates)
+        if self.params.distributionPattern is not None:
+            selected = self.distribution_pattern_generation(candidates)
         else:
             selected = random.sample(candidates, self.params.commodityNb)
         return selected
@@ -503,7 +503,7 @@ class InstanceGenerator:
 
         return selected
     
-    def distribution_pattern(self, candidates):
+    def distribution_pattern_generation(self, candidates):
         """
         Select timed commodities according to a temporal distribution pattern.
 
