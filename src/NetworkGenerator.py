@@ -3,145 +3,197 @@ import random
 import statistics
 import time
 import numpy as np
-import networkx as nx
+import heapq
 import matplotlib.pyplot as plt
 from itertools import permutations
 from pathlib import Path
 from Structures import Node, Arc, NetworkGeneratorParams, Network
 
 class NetworkGenerator:
-    def __init__(self, seed, config: NetworkGeneratorParams):
+    def __init__(self, seed: int | None, params: NetworkGeneratorParams):
         self.seed = seed
-        self.config = config
+        self.params = params
+        self.rng = random.Random(0)
+        if seed is not None:
+            self.rng = random.Random(seed)
+        
         self.nodes: list[Node] = []
         self.arcs: list[Arc] = []
         self.pairs = set()
         self.adjustedR = 0.0
-        self.hubsId = []
+        self.hubsId: list[int] = []
         self.clusteredNodesId = []
         self.targetArcNb = 0
-        self.intraArcsRatio = 1.0
 
-    def emulate_network(self):
-        if (self.config.networkEmulationPath is None):
+        self.id = 0 # Number of networks generated.
+
+    def emulate_network(self, networkNb):
+        """
+        Generate hub-and-spoke networks that emulate the structure of an existing network.
+
+        This method reads a reference network specified in the configuration file and generates
+        a pool of candidate networks that have the following similar characteristics: node number,
+        density, reciprocity.
+        It then selects the *networkNb* candidates that have the closest *assortativity*,
+        *average clustering coefficient*, and *characteristic path length* values to that of the
+        reference network.
+
+        Parameters
+        ----------
+        networkNb
+            Number of networks to generate during the network emulation.
+        
+        Config
+        ------
+        The following parameters are related to the method:
+            - *networkEmulationPath* : str
+                Path to the reference network file.
+            - *emulationTimeLimit* : float
+                Time limit (in seconds) for generating candidates.
+            - *networkSeed* : int, optional
+                Random seed for reproducibility (optional).
+
+        Returns
+        -------
+        list[NetworkGenerator]
+            The *networkNb* networks that best emulate the reference network.
+
+        Notes
+        -----
+        The selection is based on a normalized absolute distance metric:
+        """
+        if (self.params.networkEmulationPath is None):
             raise ValueError("Path to network to emulate not specified. Specify in Config.txt file.")
+        if (self.params.networkEmulationTimeLimit is None):
+            raise ValueError("Time limit for network emulation not specified. Specify in Config.txt file.")
+        
+        # Set seed for reproductibility.
+        networkSeed = self.rng.randint(0, 2**32-1)
+        np.random.seed(networkSeed)
+        random.seed(networkSeed)
 
         # Read network to emulate.
-        network = Network.from_file(Path(self.config.networkEmulationPath), isArcDistance=True)
+        refNetwork = Network.from_file(Path(self.params.networkEmulationPath), isArcDistance=True)
+        
+        # Set bounding box.
+        refBboxWidth = refBboxHeight = 0
+        if (refNetwork.nodes[0].x is not None):
+            # If node coordinates in reference network, determine bounding box.
+            refMaxHeight=0
+            refMaxWidth=0
+            if refNetwork.nodes[0].x is not None:
+                for node in refNetwork.nodes:
+                    if node.x > refMaxWidth:
+                        refMaxWidth = node.x
+                    if node.y > refMaxHeight:
+                        refMaxHeight = node.y
 
-        # Retrieve network parameters.
-        maxHeight=0
-        maxWidth=0
-        if network.nodes[0].x is not None:
-            for node in network.nodes:
-                if node.x > maxWidth:
-                    maxWidth = node.x
-                if node.y > maxHeight:
-                    maxHeight = node.y
+            refBboxHeight = refMaxHeight*0.05
+            refBboxWidth = refMaxWidth*0.05
+        elif (self.params.bboxHeight is not None):
+            # Else, if specified, use bounding box from config file.
+            refBboxHeight = self.params.bboxHeight
+            refBboxWidth = self.params.bboxWidth
+        else:
+            # Else, use a default [0,100] bounding box.
+            refBboxHeight = 100
+            refBboxWidth = 100
 
+        # Compute the mean capacity and unit to fixed cost ratio.
         capacities=[]
         priceRatio=[]
-        for arc in network.arcs:
+        for arc in refNetwork.arcs:
             capacities.append(arc.capacity)
             priceRatio.append(arc.unit / arc.fixed)
-        avgCapa = statistics.mean(capacities)
-        avgPriceRatio = statistics.mean(priceRatio)
-
-        # Build network to emulate in NetworkX.
-        G=nx.DiGraph()
-        G.add_nodes_from([0, len(network.nodes)-1])
-        for arc in network.arcs:
-            G.add_edge(arc.src, arc.dest, weight=arc.distance)
+        refAvgCapa = statistics.mean(capacities)
+        refAvgPriceRatio = statistics.mean(priceRatio)
         
-        # Compute network to emulate CNA metrics.
-        density = nx.density(G)
-        reciprocity = nx.reciprocity(G)
-        avgClusterCoef = nx.clustering(G)
-        avgSpl = nx.shortest_path_length(G)
+        # Compute CNA metrics of reference graph.
+        refDensity, refRecipro, refAvgCC, refAvgSPL, refASR = refNetwork.compute_metrics()
 
-        # Generate networks.
-        matchingNetworkFound = False
-        timeLimit = 300
+        # Set generator for emulation.
+        bestNetworks = []
+        timeLimit = self.params.networkEmulationTimeLimit
         start = time.time()
-        end = time.time()
-        while not matchingNetworkFound or end-start < timeLimit:
-            # Generate, check metrics, loop.
-            print("test")
+        genParams = NetworkGeneratorParams(None, None, False, refAvgCapa, refBboxWidth, refBboxHeight, 
+                                           self.params.targetNodeNb, None, refDensity, refRecipro, 30, self.params.hnRatio, refAvgPriceRatio)
+        generator = NetworkGenerator(self.seed, genParams)
 
-    def generate(self,):
+        minScore = float("inf")
+        maxScore = float("-inf")
+        totalGenerated = 0
+        while time.time()-start < timeLimit:
+            # Draw randomly hub node ratio if not specified.
+            if (self.params.hnRatio is None):
+                generator.params.hnRatio = random.uniform(0.0,0.3)
+
+            # Generate network.
+            genNetwork = generator.generate()
+            genDensity, genReciprocity, genAvgCC, genAvgSPL, genASR = genNetwork.compute_metrics()
+
+            # Computes distances and score.
+            drDistance = math.sqrt(((genDensity - refDensity) / refDensity) ** 2 + ((genReciprocity - refRecipro) / refRecipro) ** 2)
+            avgCCavgSPLDistance = math.sqrt(((genAvgCC - refAvgCC) / refAvgCC) ** 2 + ((genAvgSPL - refAvgSPL) / refAvgSPL) ** 2)
+            asrDistance = abs((genASR - refASR) / refASR)
+            score = drDistance + avgCCavgSPLDistance + asrDistance
+
+            totalGenerated += 1
+            minScore = min(minScore, score)
+            maxScore = max(maxScore, score)
+
+            heapq.heappush(bestNetworks, (-score, genNetwork))
+            if len(bestNetworks) > networkNb:
+                heapq.heappop(bestNetworks)
+
+        # Order by score and keep the best networkNb networks
+        bestNetworksSorted = sorted(bestNetworks, key=lambda t: t[0], reverse=True)
+        listNetworks = [t[1] for t in bestNetworksSorted]
+        
+        # Print statistics.
+        print(f"Network emulation of file: {self.params.networkEmulationPath}")
+        print(f"Number of networks tested: {totalGenerated}")
+        print(f"Minimum representativity score: {minScore:.4f}")
+        print(f"Maximum representativity score: {maxScore:.4f}")
+
+        return listNetworks
+
+    def generate(self, id=None):
         """
         Network generation main entry-point.
         """
-
-        if self.seed is not None:
-            np.random.seed(self.seed)
-            random.seed(self.seed)
+        # Set seed for reproductibility.
+        networkSeed = self.rng.randint(0, 2**32-1)
+        if (id is not None):
+            for i in range(id-1): # Handle reproductibility of a specific network.
+                networkSeed = self.rng.randint(0, 2**32-1)
+        np.random.seed(networkSeed)
+        random.seed(networkSeed)
 
         self.compute_arc_number()
-        if self.config.targetReciprocity is None:
-            self.config.targetReciprocity = self.targetArcNb/(self.config.targetNodeNb*(self.config.targetNodeNb-1))
 
-        if self.config.randomGeneration:
+        # Fix reciprocity at target density if not specified.
+        if self.params.targetReciprocity is None:
+            self.params.targetReciprocity = self.targetArcNb/(self.params.targetNodeNb*(self.params.targetNodeNb-1))
+
+        if self.params.randomGeneration:
             self.random_generation()
         else:
             self.node_generation()
             self.arc_generation()
-            
-            if __debug__:
-                # Plot network for debugging purposes.
-                plotNetwork=False
-                if plotNetwork:
-                    self.plot_network()
 
-                self.validity_check()
+        if __debug__:
+            self.validity_check()
+
+            # Plot network for debugging purposes.
+            plotNetwork=False
+            if plotNetwork:
+                self.plot_network()
 
         self.arcs = self.arcs[:self.targetArcNb]
-
-    def save(self, path, folder, id: int):
-        if folder is not None:
-            path += "/" + folder
-        path = Path(path)
-        path.mkdir(parents=True, exist_ok=True)
-        outPath = path / self.generate_file_name(id)
-        f = open(outPath,"w")
-        f.write("Nodes,"+str(len(self.nodes))+"\n")
-        i = 0
-        for node in self.nodes:
-            strClusterId = ""
-            strX = ""
-            strY = ""
-            if node.clusterId is not None: strClusterId = str(node.clusterId)
-            if node.x is not None: strX = str(node.x)
-            if node.y is not None: strY = str(node.y)
-            f.write(str(i)+","+strClusterId+","+strX+","+strY+"\n")
-            i+=1
-        f.write("Arcs,"+str(len(self.arcs))+"\n")
-        i = 0
-        for arc in self.arcs:
-            f.write(str(i)+","+str(arc.src)+","+str(arc.dest)+","+str(arc.unit)+","+str(arc.fixed)+","+str(arc.capacity)+","+str(arc.distance)+"\n")
-            i+=1
-        f.close()
-
-    def generate_file_name(self, id: int):
-        fileName = ""
-        if self.config.randomGeneration:
-            fileName += "Random"
-        else:
-            dr=str(self.config.decayRate)
-            a=str(int(self.config.hnRatio*100))
-            t=str(int(self.config.interArcsRatio*100))
-            fileName += "DR"+dr+"_A"+a+"_T"+t
-
-        ufString = str(int(self.config.ufCostRatio*100))
-        dString = str(int(self.config.targetDensity*100))
-        rString = str(int(self.config.targetReciprocity*100))
-        fileName += "_UF"+ufString+"_R"+rString+"_D"+dString+"_N"+str(self.config.targetNodeNb)+"_I"+str(id)
-
-        if self.seed is not None:
-            fileName += "_S"+str(self.seed)
-
-        fileName += ".txt"
-        return fileName
+        network = Network(self.nodes[:], self.arcs[:], self.params, self.id, self.seed)
+        self.id += 1
+        self.clear()
+        return network
 
     def random_generation(self):
         """
@@ -152,15 +204,17 @@ class NetworkGenerator:
         If a reciprocity is given it is used in the generation.
         """
 
-        self.adjustedR = self.config.targetReciprocity/(2-self.config.targetReciprocity)
-        random_points = np.random.rand(self.config.targetNodeNb, 2)
+        useReciprocity = self.params.targetReciprocity is not None
+        if useReciprocity:
+            self.adjustedR = self.params.targetReciprocity/(2-self.params.targetReciprocity)
+        
+        random_points = np.random.rand(self.params.targetNodeNb, 2)
         self.nodes.extend(Node(x, y, 0) for x, y in random_points)
-        allPairs = list(permutations(range(self.config.targetNodeNb),2))
+        allPairs = list(permutations(range(self.params.targetNodeNb),2))
         random.shuffle(allPairs)
-        useReciprocity = self.config.targetReciprocity is not None
         for i, j in allPairs:
             if ((i, j) not in self.pairs) and ((j, i) not in self.pairs):
-                newArcs = self.get_new_arcs(useReciprocity, i, j)
+                newArcs = self.reciprocity_arc_generation(useReciprocity, i, j)
                 self.update_arc_pairs(newArcs)
                 if len(self.arcs) >= self.targetArcNb:
                     break
@@ -171,7 +225,7 @@ class NetworkGenerator:
         """
          
         # We set the number of clusters.
-        clusterNb = math.ceil(self.config.hnRatio * self.config.targetNodeNb)
+        clusterNb = math.ceil(self.params.hnRatio * self.params.targetNodeNb)
         if clusterNb == 0:
             clusterNb = 1
 
@@ -179,7 +233,7 @@ class NetworkGenerator:
         clusterCenters = np.random.rand(clusterNb, 2)
         
         # We assign the points to each cluster.
-        remainingPointsNb = self.config.targetNodeNb - clusterNb
+        remainingPointsNb = self.params.targetNodeNb - clusterNb
         pointsPerCluster = [remainingPointsNb // clusterNb] * clusterNb
         for i in range(remainingPointsNb % clusterNb):
             # Any remaining point is randomly assigned to a cluster.
@@ -197,14 +251,14 @@ class NetworkGenerator:
                     x, y = self.generate_cluster_node(clusterCenter)
 
                 nodesId.append(len(self.nodes))
-                x = round(x * self.config.rectangleWidth,5)
-                y = round(y * self.config.rectangleHeight, 5)
+                x = round(x * self.params.bboxWidth,5)
+                y = round(y * self.params.bboxHeight, 5)
                 self.nodes.append(Node(x,y,i))
                 
             nodesId.append(len(self.nodes))
             self.hubsId.append(len(self.nodes))
-            x = round(clusterCenter[0] * self.config.rectangleWidth, 5)
-            y = round(clusterCenter[1] * self.config.rectangleHeight, 5)
+            x = round(clusterCenter[0] * self.params.bboxWidth, 5)
+            y = round(clusterCenter[1] * self.params.bboxHeight, 5)
             self.nodes.append(Node(x,y,i))
             self.clusteredNodesId.append(nodesId)
 
@@ -214,50 +268,56 @@ class NetworkGenerator:
         Clustered nodes must have been generated by the generator beforehand.
         """
         nodeNb = len(self.nodes)
-        if (nodeNb != self.config.targetNodeNb):
-            raise Exception(f"Node number produced not correct: asked={self.config.targetNodeNb} ; generated={nodeNb}")
+        if (nodeNb != self.params.targetNodeNb):
+            raise Exception(f"Node number produced not correct: asked={self.params.targetNodeNb} ; generated={nodeNb}")
 
         clusterNb = len(self.clusteredNodesId)
+        self.adjustedR = self.params.targetReciprocity/(2-self.params.targetReciprocity)
+        self.adjustedR = max(0,self.adjustedR)
         
         # We compute if the arc budget is enough to produce a weakly connected graph.
-        minBackboneArcNb = 2*clusterNb
-        minSpokeHubArcNb = math.ceil((nodeNb-clusterNb)*(self.config.targetReciprocity+1))
+        minBackboneArcNb = 2*(clusterNb-1)
+        minSpokeHubArcNb = (nodeNb-clusterNb)*(self.adjustedR+1)
         if (minBackboneArcNb+minSpokeHubArcNb > self.targetArcNb):
             raise Exception(f"Arc budget too low. Increase node number or density, or lower the reciprocity or the hub and spokes ratio. " \
-            "Budget={self.targetArcNb} ; Minimum arc needed={minBackboneArcNb+minSpokeHubArcNb}")
+            f"Budget={self.targetArcNb} ; Minimum arc needed={minBackboneArcNb+minSpokeHubArcNb}")
 
         # Step 1: We generate reciprocal arcs between hubs.
         self.generate_hub_hub_arcs()
         arcBudget = self.targetArcNb - len(self.arcs)
-
-        # We adjust the target reciprocity.
-        self.adjustedR = (self.targetArcNb*self.config.targetReciprocity-len(self.arcs))/arcBudget
-        self.adjustedR = self.adjustedR/(2-self.adjustedR)
-        self.adjustedR = max(0,self.adjustedR)
+        self.adjustedR = (self.targetArcNb*self.adjustedR-len(self.arcs))/arcBudget
 
         # Step 2: We generate arcs between spokes and hubs.
-        self.generate_spoke_hub_arcs()
-        arcBudget = self.targetArcNb - len(self.arcs)
+        self.generate_same_cluster_hub_spoke_arcs()
 
-        # Step 3+4: We generate intra and inter cluster spoke to spoke arcs.
-        intraArcNb, interArcNb = self.compute_special_arc_nb()
-        if intraArcNb > 0:
-            self.generate_intra_arcs(intraArcNb)
-        if len(self.hubsId) > 1 and interArcNb > 0:
-            self.generate_inter_arcs(interArcNb)
-        
+        # Step 3: We generate intra cluster arcs, i.e., arcs between spokes of the same cluster.
         arcBudget = self.targetArcNb - len(self.arcs)
-        self.generate_random_arcs(arcBudget)
+        if (arcBudget > 0):
+            intraArcNb = self.compute_intra_arc_nb(arcBudget)
+            self.generate_same_cluster_spoke_spoke_arcs(intraArcNb)
+
+        # Step 4: We generate inter cluster arcs, i.e., arcs between spokes not of the same cluster.
+        arcBudget = self.targetArcNb - len(self.arcs)
+        if (arcBudget > 0):
+            interArcNb = self.compute_inter_arc_nb(arcBudget)
+            self.generate_distinct_cluster_spoke_spoke_arcs(interArcNb)
+
+        # Step 5: We randomly generate the remaining arcs.
+        arcBudget = self.targetArcNb - len(self.arcs)
+        if (arcBudget > 0):
+            self.generate_distinct_cluster_hub_spoke_arcs(arcBudget)
 
     def generate_hub_hub_arcs(self):
         """
         Backbone generation, link hub spokes to other hub spokes.
         """
+        # If generating a complete network of hub nodes isn't possible, 
+        # we find the maximum number of neighbors per hub possible.
         hubNb = len(self.hubsId)
         maxBackboneArcNb = hubNb*(hubNb-1)
         spokeNb = len(self.nodes)-hubNb
-        maxSpokeHubArcNb = math.ceil(spokeNb*(self.config.targetReciprocity+1))
-        neighborNb = hubNb-1
+        maxSpokeHubArcNb = math.ceil(spokeNb*(self.params.targetReciprocity+1))
+        neighborNb = math.floor(hubNb/2)
         if maxBackboneArcNb+maxSpokeHubArcNb > self.targetArcNb:
             neighborNb -= 1
             while neighborNb >= 2:
@@ -269,96 +329,90 @@ class NetworkGenerator:
         if neighborNb >= len(self.hubsId):
             raise Exception(f"Hub asked to be linked to more hubs ({neighborNb}) than possible ({len(self.hubsId)}).")
         
+        # We connect the hubs together reciprocically in a round-robin fashion.
         for i in range(len(self.hubsId)):
             for j in range(1, neighborNb+1):
                 u, v = self.hubsId[i], self.hubsId[(i+j) % len(self.hubsId)]
                 if (u,v) in self.pairs:
                     continue
-                newArcs = self.get_new_arcs(False, u, v)
+                newArcs = self.reciprocity_arc_generation(False, u, v)
                 self.update_arc_pairs(newArcs)
 
-    def generate_spoke_hub_arcs(self):
+    def generate_same_cluster_hub_spoke_arcs(self):
         """
         Generates arcs between spoke nodes and their hub node.
         """
+        # First pass, generate an arc randomly between each spoke and its related hub.
         for i in range(len(self.hubsId)):
-            spokeHubPairs = [(spoke, self.hubsId[i]) for spoke in self.clusteredNodesId[i][:-1]] # List spoke hub pairs.
-            self.generate_shuffle_reciprocity_arcs(spokeHubPairs, float('inf'))
+            for spokeId in self.clusteredNodesId[i][:-1]:
+                if random.random() < 0.5:
+                    self.update_arc_pairs([self.get_new_arc(self.hubsId[i], spokeId)])
+                else:
+                    self.update_arc_pairs([self.get_new_arc(spokeId, self.hubsId[i])])
 
-    def compute_special_arc_nb(self):
+        # Second pass, until budget reach or all pairs considered, generate arcs respecting the reciprocity.
+        for i in range(len(self.hubsId)):
+            for spokeId in self.clusteredNodesId[i][:-1]:
+                if random.random() < self.adjustedR:
+                    if (self.hubsId[i],spokeId) in self.pairs:
+                        self.update_arc_pairs([self.get_new_arc(spokeId, self.hubsId[i])])
+                else:
+                    if (spokeId,self.hubsId[i]) in self.pairs:
+                        self.update_arc_pairs([self.get_new_arc(self.hubsId[i], spokeId)])
+                if len(self.arcs) >= self.targetArcNb:
+                    break
+            if len(self.arcs) >= self.targetArcNb:
+                    break
+
+    def compute_intra_arc_nb(self, arcBudget):
         """
-        Computes the number of inter and intra arcs to generate.
+        Computes the number of intra arcs to generate.
         """
-        arcBudget = self.targetArcNb - len(self.arcs)
+        clusterNb = len(self.hubsId)
+
+        # Compute max possible number of intra arcs to generate.
+        maxIntraArcNb = 0
+        for i in range(clusterNb):
+            iSpokeNb = len(self.clusteredNodesId[i])-1
+            maxIntraArcNb += iSpokeNb * (iSpokeNb-1)
+        
+        result = min(arcBudget, maxIntraArcNb)
+        return result
+
+    def compute_inter_arc_nb(self, arcBudget):
+        """
+        Computes the number of inter arcs to generate.
+        """
         clusterNb = len(self.hubsId)
 
         # Compute max possible number of intra and inter arcs to generate.
-        maxIntraArcNb = 0
         maxInterArcNb = 0
         for i in range(clusterNb-1):
             iSpokeNb = len(self.clusteredNodesId[i])-1
-            maxIntraArcNb += iSpokeNb * (iSpokeNb-1)
             for j in range(i+1, clusterNb):
                 jSpokeNb = len(self.clusteredNodesId[j])-1
                 maxInterArcNb += iSpokeNb * jSpokeNb * 2
-        lastClusterSpokeNb = len(self.clusteredNodesId[clusterNb-1])-1
-        maxIntraArcNb += lastClusterSpokeNb * (lastClusterSpokeNb-1)
 
-        # Compute intra and inter arcs to generate according to user ratio.
-        targetIntraArcsNb = round(maxIntraArcNb*self.intraArcsRatio)
-        targetInterArcsNb = round(maxInterArcNb*self.config.interArcsRatio)
-
-        # Handle case not enough arc budget.
-        if targetIntraArcsNb > arcBudget and targetInterArcsNb <= 0:
-            targetIntraArcsNb = arcBudget
-        elif targetInterArcsNb > arcBudget and targetIntraArcsNb <= 0:
-            targetInterArcsNb = arcBudget
-        elif targetIntraArcsNb+targetInterArcsNb > arcBudget:
-            # Normalize and scale down number of inter and intra arcs to generate.
-            targetIntraArcsNb = math.floor((targetIntraArcsNb*arcBudget)/(targetIntraArcsNb+targetInterArcsNb))
-            #targetInterArcsNb = arcBudget - targetIntraArcsNb
-
-        targetInterArcsNb = arcBudget - targetIntraArcsNb
-
-        return targetIntraArcsNb, targetInterArcsNb
+        result = min(arcBudget, maxInterArcNb)
+        return result
     
-    def generate_intra_arcs(self, targetIntraArcNb):
+    def generate_same_cluster_spoke_spoke_arcs(self, targetIntraArcNb):
         """
         Generate intra arcs (i.e. arcs between spokes of the same cluster).
         """
         if targetIntraArcNb == 0:
             return
-
-        hubNb=len(self.hubsId)
-        arcNbPerCluster = math.ceil(targetIntraArcNb / hubNb)
-
+        
+        pairs=[]
         for i in range(len(self.clusteredNodesId)):
             spokes = self.clusteredNodesId[i][:-1]
-            spokesNb = len(spokes)
-            clusterMaxArcNb = spokesNb*(spokesNb-1)*self.intraArcsRatio
+            for j in range(len(spokes)-1):
+                for k in range(j+1,len(spokes)):
+                    pairs.append((spokes[j],spokes[k]))
+        random.shuffle(pairs)
+        self.generate_shuffle_reciprocity_arcs(pairs, targetIntraArcNb)
 
-            # Enumerate pairs.
-            pairs = []
-            for i in range(len(spokes)):
-                for j in range(i + 1, len(spokes)): 
-                    pairs.append((spokes[i], spokes[j]))
-            random.shuffle(pairs)
-            
-            """
-            random.shuffle(spokes)
-            nodePairs = []
-            for k in range(len(spokes)-1):
-                for l in range(k+1, len(spokes)):
-                    if (spokes[k],spokes[l]) in self.pairs or (spokes[l],spokes[k]) in self.pairs:
-                        continue
-
-                    nodePairs.append((spokes[k],spokes[l]))
-                if (len(nodePairs) > clusterMaxArcNb):
-                    break"""
-
-            self.generate_shuffle_reciprocity_arcs(pairs, arcNbPerCluster)
-
-    def generate_inter_arcs(self, targetInterArcNb):
+    def generate_distinct_cluster_spoke_spoke_arcs(self, targetInterArcNb):
         """
         Generate inter arcs (i.e. arcs between spokes of different cluster).
         Arcs are generated by linking spokes of high degree.
@@ -367,56 +421,16 @@ class NetworkGenerator:
             return
 
         clusterNb=len(self.hubsId)
-        clusterPairNb = clusterNb * (clusterNb-1) / 2
-        arcNbPerClusterPair = math.ceil(targetInterArcNb / clusterPairNb)
-
-        # Compute nodes degree.
-        nodesDegree = [0 for _ in range(self.config.targetNodeNb)]
-        for arc in self.arcs:
-            nodesDegree[arc.src] += 1
-            nodesDegree[arc.dest] += 1
-
-        # Select spoke nodes to consider for each cluster by degree.
-        sortedSpokes = []
-        selectedSpokes = []
-        for cluster in self.clusteredNodesId:
-            spokes = cluster[:-1]
-            spokes = sorted(spokes, key=lambda n: nodesDegree[n], reverse=True)
-            sortedSpokes.append(spokes)
-            keepNb = max(1, math.ceil(len(spokes) * self.config.connectedSpokesRatio))
-            selectedSpokes.append(spokes[:keepNb])
-        
-        """
-        # Score candidate pairs by degree. Choose randomly which pairs to link among highest degree pairs.
-        for i in range(clusterNb-1):
-            iSpokes = selectedSpokes[i]
-            for j in range(i+1, clusterNb):
-                jSpokes = selectedSpokes[j]
-
-                # Adapt number of selected spokes if not sufficient.
-                minPairNb = arcNbPerClusterPair / (1+self.adjustedR)
-                minINb = math.ceil(minPairNb/max(1,len(iSpokes)))
-                minJNb = math.ceil(minPairNb/max(1,len(jSpokes)))
-                if minINb > len(iSpokes):
-                    iSpokes = sortedSpokes[i][:min(minINb,len(sortedSpokes[i]))]
-                if minJNb > len(jSpokes):
-                    jSpokes = sortedSpokes[j][:min(minJNb,len(sortedSpokes[j]))]
-
-                candidatePairs = self.enumerate_lists_pairs(iSpokes, jSpokes)
-                random.shuffle(candidatePairs)
-                self.generate_shuffle_reciprocity_arcs(candidatePairs, arcNbPerClusterPair)"""
-        
+        pairs=[]
         for i in range(clusterNb-1):
             iSpokes = self.clusteredNodesId[i][:-1]
             for j in range(i+1, clusterNb):
                 jSpokes = self.clusteredNodesId[j][:-1]
-                interClusterPairs = self.enumerate_lists_pairs(iSpokes, jSpokes)
-                pairsScores = self.score_pair_degree(nodesDegree, interClusterPairs)
-                sorted_pairs = [pair for _, pair in sorted(zip(pairsScores, interClusterPairs), reverse=True)]
-                topDegreePairs = sorted_pairs[:arcNbPerClusterPair]
-                self.generate_shuffle_reciprocity_arcs(topDegreePairs, arcNbPerClusterPair)
+                pairs += self.enumerate_lists_pairs(iSpokes, jSpokes)
 
-    def generate_random_arcs(self, arcBudget):
+        self.generate_shuffle_reciprocity_arcs(pairs, targetInterArcNb)
+
+    def generate_distinct_cluster_hub_spoke_arcs(self, arcBudget):
         clusterNb=len(self.hubsId)
         candidatePairs = []
         for i in range(clusterNb-1):
@@ -460,31 +474,30 @@ class NetworkGenerator:
         random.shuffle(candidatePairs)
         while (newArcNb<maxArcNb and k < len(candidatePairs)):
             (i,j) = candidatePairs[k]
-        
-            newArcs = self.get_new_arcs(True, i, j)
+            newArcs = self.reciprocity_arc_generation(True, i, j)
             self.update_arc_pairs(newArcs)
             newArcNb += len(newArcs)
             k += 1
 
     def generate_cluster_node(self, clusterCenter):
-        distance = np.random.exponential(scale=1/self.config.decayRate)
+        distance = np.random.exponential(scale=1/self.params.decayRate)
         angle = np.random.uniform(0, 2*np.pi)
         x = clusterCenter[0] + distance * np.cos(angle)
         y = clusterCenter[1] + distance * np.sin(angle)
         return (x,y)
 
     def get_arc_distance(self, iId, jId):
-        xI = self.nodes[iId].x * self.config.rectangleWidth
-        xJ = self.nodes[jId].x * self.config.rectangleWidth
-        yI = self.nodes[iId].y * self.config.rectangleHeight
-        yJ = self.nodes[jId].y * self.config.rectangleHeight
+        xI = self.nodes[iId].x * self.params.bboxWidth
+        xJ = self.nodes[jId].x * self.params.bboxWidth
+        yI = self.nodes[iId].y * self.params.bboxHeight
+        yJ = self.nodes[jId].y * self.params.bboxHeight
         xx = xI - xJ
         yy = yI - yJ
         return math.sqrt(xx**2 + yy**2)
 
     def get_arc_costs(self, distance):
         fixedCost = round(distance*0.5*60*0.55,5)
-        unitCost = round(self.config.ufCostRatio*fixedCost/self.config.capacity, 5)
+        unitCost = round(self.params.ufCostRatio*fixedCost/self.params.capacity, 5)
         return (fixedCost, unitCost)
     
     def get_new_arc(self, idFrom, idTo):
@@ -495,11 +508,15 @@ class NetworkGenerator:
             dest=idTo,
             unit=unitCost,
             fixed=fixedCost,
-            capacity=self.config.capacity,
+            capacity=self.params.capacity,
             distance=distance
         )
     
-    def get_new_arcs(self, useReciprocity, idFrom, idTo):
+    def reciprocity_arc_generation(self, useReciprocity, idFrom, idTo):
+        """
+        Generates either reciprocal arcs bewteen nodes idFrom and idTo, 
+        or only one randomly chosen.
+        """
         newArcs = []
         if (not useReciprocity) or (random.random() < self.adjustedR):
             newArcs.append(self.get_new_arc(idFrom, idTo))
@@ -517,36 +534,31 @@ class NetworkGenerator:
             self.pairs.add((arc.src, arc.dest))
 
     def compute_arc_number(self):
-        # We compute the number of arcs to produce.
-        maxArcNb = self.config.targetNodeNb*(self.config.targetNodeNb-1)
-        if (self.config.targetArcNb is not None):
-            self.targetArcNb = self.config.targetArcNb
-        elif (self.config.targetDensity is not None):
-            self.targetArcNb = round(maxArcNb*self.config.targetDensity)
+        """
+        Computes the arc budget depending on the parameter specified by the user.
+        """
+        maxArcNb = self.params.targetNodeNb*(self.params.targetNodeNb-1)
+        if (self.params.targetArcNb is not None):
+            self.targetArcNb = self.params.targetArcNb
+        elif (self.params.targetDensity is not None):
+            self.targetArcNb = round(maxArcNb*self.params.targetDensity)
         else:
             raise ValueError("No target density or arc number set.")
 
     def validity_check(self):
-        if self.config.targetNodeNb != len(self.nodes):
-            raise Exception(f"Incorrect number of nodes generated: asked={self.config.targetNodeNb} ; generated={len(self.nodes)}")
+        if self.params.targetNodeNb != len(self.nodes):
+            raise Exception(f"Incorrect number of nodes generated: asked={self.params.targetNodeNb} ; generated={len(self.nodes)}")
         
         # Check for duplicates arcs.
         pairCheck = set()
         for arc in self.arcs:
+            if arc.src == arc.dest:
+                raise Exception("Error: looping arc detected")
             if (arc.src,arc.dest) in pairCheck:
-                raise Exception("Arc duplicate error.")
+                raise Exception("Error: duplicate arc detected")
             pairCheck.add((arc.src,arc.dest))
-
-    @staticmethod
-    def score_pair_degree(nodesDegree, inPairs):
-        pairScore = []
-        for (i,j) in inPairs:
-            pairScore.append(nodesDegree[i] + nodesDegree[j])
-
-        return pairScore
     
     def plot_network(self):
-
         spokes=[]
         hubs=[]
 
@@ -566,3 +578,20 @@ class NetworkGenerator:
         plt.legend()
         plt.gca().set_aspect('equal', adjustable='box')
         plt.savefig("network.png", dpi=300, bbox_inches="tight")
+
+    def clear(self):
+        self.nodes.clear()
+        self.arcs.clear()
+        self.pairs.clear()
+        self.adjustedR = 0.0
+        self.hubsId.clear()
+        self.clusteredNodesId.clear()
+        self.targetArcNb = 0
+
+    @staticmethod
+    def score_pair_degree(nodesDegree, inPairs):
+        pairScore = []
+        for (i,j) in inPairs:
+            pairScore.append(nodesDegree[i] + nodesDegree[j])
+
+        return pairScore

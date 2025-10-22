@@ -1,38 +1,37 @@
-+   Configuration parameters.
++   General configuration parameters.
 defaultInstancePath=data/Instances
 defaultNetworkPath=data/Networks
-folder=TestDebugGenerator
-networkNb=50
-instanceNb=0
-preProcessingSSNDP=False
-doStatic=False
-networkSeed=
-demandSeed=
+folder=IJOC_TESTS_22_10_2025
+networkNb=1
+instanceNb=1
+networkSeed=0
+demandSeed=0
 
 +   Network generation parameters.
 networkEmulationPath=
+networkEmulationTimeLimit=30
 randomGeneration=False
 capacity=1000
-rectangleWidth=1000
-rectangleHeight=1000
-targetNodeNb=40
+bboxWidth=1000
+bboxHeight=1000
+targetNodeNb=50
 targetArcNb=
-targetDensity=0.1
+targetDensity=0.2
 targetReciprocity=0.5
 decayRate=30
-hnRatio=0.2
-interArcsRatio=0.0
-connectedSpokesRatio=0.0
-ufCostRatio=0.1
+hnRatio=0.1
+ufCostRatio=0.05
 
 +   Demand generation parameters.
-commodityNb=5000
-days=1
-hours=36
-quantityToCapacityMean=0.1
-quantityToCapacityDev=0.5
-flexibilityParameterMean=0.5
-flexibilityParameterDev=0.17
-criticalTime=1
-demandPatternMode=Random
-staircaseDistribution=[0.03,0.05,0.12,0.3,0.5,0.45,3]
+doStatic=False
+commodityNb=100
+quantityToCapaMean=0.1
+quantityToCapaDev=0.5
+sameRegionRatio=0.1
+disparityRatio=0.3
+horizon=10
+flexibilityMean=0.5
+flexibilityDev=0.17
+criticalTime=2
+distributionPattern=[0.6,0,0.2,0,0.2,0,0,0,0,0]
+preProcessingSSNDP=True
