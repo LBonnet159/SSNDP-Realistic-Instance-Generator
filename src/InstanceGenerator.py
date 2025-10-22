@@ -5,10 +5,7 @@ import scipy.stats as stats
 from scipy.sparse.csgraph import dijkstra
 from pathlib import Path
 
-import matplotlib.pyplot as plt
-from collections import Counter
-
-from Structures import Arc, Network, Instance, Commodity, InstanceGeneratorParams
+from Structures import Arc, Network, Commodity, InstanceGeneratorParams
 
 class InstanceGenerator:
     """
@@ -518,7 +515,8 @@ class InstanceGenerator:
 
         Notes:
             - Uses `params.distributionPattern` as a probability vector over time slots.
-            - If insufficient candidates exist in some slots, random pairs from other time slots are used as a fallback.
+            - If insufficient candidates exist in some slots, random pairs from other time slots are used
+              as a fallback, a warning is printed.
         """
         dist = np.array(self.params.distributionPattern, dtype=float)
 

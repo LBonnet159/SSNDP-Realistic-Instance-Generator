@@ -611,6 +611,9 @@ class NetworkGenerator:
             raise ValueError("No target density or arc number set.")
 
     def validity_check(self):
+        """
+        Validate that node count and arc uniqueness constraints are satisfied.
+        """
         if self.params.targetNodeNb != len(self.nodes):
             raise Exception(f"Incorrect number of nodes generated: asked={self.params.targetNodeNb} ; generated={len(self.nodes)}")
         
@@ -625,7 +628,7 @@ class NetworkGenerator:
     
     def plot_network(self):
         """
-        Plots the current nodes of the generator. The plot is saved in the current active directory.
+        Visualize and save the generated network layout as 'generated_network.png'.
         """
         spokes=[]
         hubs=[]
@@ -648,6 +651,9 @@ class NetworkGenerator:
         plt.savefig("generated_network.png", dpi=300, bbox_inches="tight")
 
     def clear(self):
+        """
+        Reset generator state for the next network build.
+        """
         self.nodes.clear()
         self.arcs.clear()
         self.pairs.clear()
@@ -655,11 +661,3 @@ class NetworkGenerator:
         self.hubsId.clear()
         self.clusteredNodesId.clear()
         self.targetArcNb = 0
-
-    @staticmethod
-    def score_pair_degree(nodesDegree, inPairs):
-        pairScore = []
-        for (i,j) in inPairs:
-            pairScore.append(nodesDegree[i] + nodesDegree[j])
-
-        return pairScore

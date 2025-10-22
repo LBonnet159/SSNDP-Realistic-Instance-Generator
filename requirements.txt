@@ -1,6 +1,6 @@
 # SSNDP-Realistic-Instance-Generator
 # Requirements for running the instance generator and reproducing results
-# Tested with Python 3.10–3.12 on Windows and Linux
+# Tested with Python 3.10 on Linux
 
 numpy>=2.2
 scipy>=1.15
