@@ -296,14 +296,30 @@ class Network:
                 )
 
     def generate_file_name(self):
-        dr=str(round(self.params.decayRate))
-        a=str(round(self.params.hnRatio*100))
-        uf=str(round(self.params.ufCostRatio*100))
-        d=str(round(self.params.targetDensity*100))
-        r=str(round(self.params.targetReciprocity*100))
-        n=str(self.params.targetNodeNb)
-        id=str(self.id)
-        fileName=f"DR{dr}_A{a}_UF{uf}_R{r}_D{d}_N{n}_I{id}"
+        # Resolve density name depending on parameter specified.
+        d=0
+        if self.params.targetDensity is None:
+            d=self.params.targetArcNb/(self.params.targetNodeNb*(self.params.targetNodeNb-1))
+        else:
+            d=self.params.targetDensity
+        d=round(d*100)
+
+        # Common part of file name.
+        n=self.params.targetNodeNb
+        fileName=f"_D{d}_N{n}_I{self.id}"
+        if self.params.targetReciprocity is not None:
+            r=round(self.params.targetReciprocity*100)
+            fileName=f"_R{r}"+fileName
+
+        # Resolve file name either for random or structured network.
+        if self.params.randomGeneration:
+            fileName="Random"+fileName
+        else:
+            dr=round(self.params.decayRate)
+            a=round(self.params.hnRatio*100)
+            uf=round(self.params.ufCostRatio*100)
+            fileName=f"DR{dr}_A{a}_UF{uf}"+fileName
+        
         if self.seed is not None:
             fileName += f"_S{self.seed}"
         return fileName + ".txt"

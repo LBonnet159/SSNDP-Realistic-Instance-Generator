@@ -203,7 +203,6 @@ class NetworkGenerator:
             if plotNetwork:
                 self.plot_network()
 
-        self.arcs = self.arcs[:self.targetArcNb]
         network = Network(self.nodes[:], self.arcs[:], self.params, self.id, self.seed)
         self.id += 1
         self.clear()
@@ -214,11 +213,10 @@ class NetworkGenerator:
         Generate a purely random directed network.
 
         Nodes are placed uniformly in [0,1] x [0,1].
-        Arcs are created randomly until the target arc count is reached,
-        optionally enforcing reciprocity.
+        Arcs are created randomly until the target arc count is reached.
 
         Notes:
-            Uses `targetReciprocity` if specified.
+            - Uses `targetReciprocity` if specified.
         """
 
         useReciprocity = self.params.targetReciprocity is not None
@@ -303,22 +301,22 @@ class NetworkGenerator:
         nodeNb = len(self.nodes)
         if (nodeNb != self.params.targetNodeNb):
             raise Exception(f"Node number produced not correct: asked={self.params.targetNodeNb} ; generated={nodeNb}")
-
-        clusterNb = len(self.clusteredNodesId)
-        self.adjustedR = self.params.targetReciprocity/(2-self.params.targetReciprocity)
-        self.adjustedR = max(0,self.adjustedR)
         
         # We compute if the arc budget is enough to produce a weakly connected graph.
-        minBackboneArcNb = 2*(clusterNb-1)
-        minSpokeHubArcNb = (nodeNb-clusterNb)*(self.adjustedR+1)
+        clusterNb = len(self.clusteredNodesId)
+        r=self.params.targetReciprocity
+        self.adjustedR = max(0,r/(2-r))
+        minBackboneArcNb = int(2*(clusterNb-1))
+        minSpokeHubArcNb = int((nodeNb-clusterNb)*(self.adjustedR+1))
         if (minBackboneArcNb+minSpokeHubArcNb > self.targetArcNb):
             raise Exception(f"Arc budget too low. Increase node number or density, or lower the reciprocity or the hub and spokes ratio. " \
             f"Budget={self.targetArcNb} ; Minimum arc needed={minBackboneArcNb+minSpokeHubArcNb}")
 
-        # Step 1: We generate reciprocal arcs between hubs.
+        # Step 1: We generate reciprocal arcs between hubs and compensate the reciprocity bias of step 1.
         self.generate_hub_hub_arcs()
         arcBudget = self.targetArcNb - len(self.arcs)
-        self.adjustedR = (self.targetArcNb*self.adjustedR-len(self.arcs))/arcBudget
+        self.adjustedR = (self.targetArcNb*r-len(self.arcs))/arcBudget
+        self.adjustedR = self.adjustedR/(2-self.adjustedR)
 
         # Step 2: We generate arcs between spokes and hubs.
         self.generate_same_cluster_hub_spoke_arcs()
@@ -349,12 +347,12 @@ class NetworkGenerator:
         hubNb = len(self.hubsId)
         maxBackboneArcNb = hubNb*(hubNb-1)
         spokeNb = len(self.nodes)-hubNb
-        maxSpokeHubArcNb = math.ceil(spokeNb*(self.params.targetReciprocity+1))
+        maxSpokeHubArcNb = math.ceil(spokeNb*(self.adjustedR+1))
         neighborNb = math.floor(hubNb/2)
         if maxBackboneArcNb+maxSpokeHubArcNb > self.targetArcNb:
             neighborNb -= 1
             while neighborNb >= 2:
-                newBackboneArcNb = hubNb*neighborNb
+                newBackboneArcNb = 2*hubNb*neighborNb
                 if newBackboneArcNb + maxSpokeHubArcNb <= self.targetArcNb:
                     break
                 neighborNb -= 1
@@ -376,26 +374,33 @@ class NetworkGenerator:
         Generate arcs between each hub and its associated spokes.
         """
         # First pass, generate an arc randomly between each spoke and its related hub.
+        reciprocalPairsIdx = []
+        candidateArcs = []
+        candidateArcNb=0
         for i in range(len(self.hubsId)):
             for spokeId in self.clusteredNodesId[i][:-1]:
-                if random.random() < 0.5:
-                    self.update_arc_pairs([self.get_new_arc(self.hubsId[i], spokeId)])
-                else:
-                    self.update_arc_pairs([self.get_new_arc(spokeId, self.hubsId[i])])
+                candidateArcs.append(self.reciprocity_arc_generation(True, self.hubsId[i], spokeId))
+                candidateArcNb+=len(candidateArcs[-1])
+                if len(candidateArcs[-1])==2:
+                    reciprocalPairsIdx.append(len(candidateArcs)-1)
 
-        # Second pass, until budget reach or all pairs considered, generate arcs respecting the reciprocity.
-        for i in range(len(self.hubsId)):
-            for spokeId in self.clusteredNodesId[i][:-1]:
-                if random.random() < self.adjustedR:
-                    if (self.hubsId[i],spokeId) in self.pairs:
-                        self.update_arc_pairs([self.get_new_arc(spokeId, self.hubsId[i])])
-                else:
-                    if (spokeId,self.hubsId[i]) in self.pairs:
-                        self.update_arc_pairs([self.get_new_arc(self.hubsId[i], spokeId)])
-                if len(self.arcs) >= self.targetArcNb:
-                    break
-            if len(self.arcs) >= self.targetArcNb:
-                    break
+        # Second pass, until budget reached or all reciprocal pairs considered,
+        # remove one arc from each reciprocal arcs.
+        random.shuffle(reciprocalPairsIdx)
+        arcBudget=self.targetArcNb-len(self.arcs)-candidateArcNb
+        k=0
+        while k < len(reciprocalPairsIdx) and arcBudget < 0:
+            idx = reciprocalPairsIdx[k]
+            if random.uniform(0,1) < 0.5:
+                candidateArcs[idx] = [candidateArcs[idx][0]]
+            else:
+                candidateArcs[idx] = [candidateArcs[idx][1]]
+            arcBudget+=1
+            k+=1
+
+        # Update arcs and pair set.
+        for arcs in candidateArcs:
+            self.update_arc_pairs(arcs)
 
     def compute_intra_arc_nb(self, arcBudget):
         """
@@ -508,9 +513,12 @@ class NetworkGenerator:
         while (newArcNb<maxArcNb and k < len(candidatePairs)):
             (i,j) = candidatePairs[k]
             newArcs = self.reciprocity_arc_generation(True, i, j)
-            self.update_arc_pairs(newArcs)
             newArcNb += len(newArcs)
             k += 1
+            if newArcNb > maxArcNb:
+                newArcs.pop()
+                newArcNb-=1
+            self.update_arc_pairs(newArcs)
 
     def generate_cluster_node(self, clusterCenter):
         """
@@ -575,11 +583,11 @@ class NetworkGenerator:
             list[Arc]: One or two arcs depending on reciprocity.
         """
         newArcs = []
-        if (not useReciprocity) or (random.random() < self.adjustedR):
+        if (not useReciprocity) or (random.uniform(0,1) < self.adjustedR):
             newArcs.append(self.get_new_arc(idFrom, idTo))
             newArcs.append(self.get_new_arc(idTo, idFrom))
         else:
-            if random.random() < 0.5:
+            if random.uniform(0,1) < 0.5:
                 newArcs.append(self.get_new_arc(idFrom, idTo))
             else:
                 newArcs.append(self.get_new_arc(idTo, idFrom))

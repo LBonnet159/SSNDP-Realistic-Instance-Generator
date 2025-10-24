@@ -1,9 +1,9 @@
 +   General configuration parameters.
 defaultInstancePath=data/Instances
 defaultNetworkPath=data/Networks
-folder=Benchmark
-networkNb=5
-instanceNb=3
+folder=Agg_TESTS_23_10_2025
+networkNb=100
+instanceNb=0
 networkSeed=0
 demandSeed=0
 
@@ -14,12 +14,12 @@ randomGeneration=False
 capacity=1000
 bboxWidth=1000
 bboxHeight=1000
-targetNodeNb=20
+targetNodeNb=40
 targetArcNb=
-targetDensity=0.4
-targetReciprocity=0.5
+targetDensity=0.3
+targetReciprocity=0.7
 decayRate=30
-hnRatio=[0.1,0.2,0.3]
+hnRatio=0.1
 ufCostRatio=0.05
 
 +   Demand generation parameters.
