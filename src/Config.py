@@ -1,7 +1,7 @@
 import itertools
 import ast
 from copy import deepcopy
-from Structures import ConfigParams, NetworkGeneratorParams, InstanceGeneratorParams
+from Structures import ConfigParams, NetworkGeneratorParams, InstanceGeneratorParams, ApplicationType
 
 class Config:
     def __init__(self, params: dict):
@@ -26,29 +26,45 @@ class Config:
         with open(path, 'r') as file:
             for line in file:
                 line = line.strip()
-                if '=' in line:
-                    key, value = line.split('=', 1)
-                    key = key.strip()
-                    value = value.strip()
-                    if value.startswith("[") and value.endswith("]"):
-                        try:
-                            params[key] = ast.literal_eval(value)  # Parse list.
-                        except Exception:
-                            params[key] = value
-                    elif len(value) == 0 or value == 'None':
-                        params[key] = None
-                    elif value.lower() == "true":
-                        params[key] = True
-                    elif value.lower() == "false":
-                        params[key] = False
-                    elif value.isdigit():
-                        params[key] = int(value)
-                    else:
-                        try:
-                            params[key] = float(value)
-                        except ValueError:
-                            params[key] = value
 
+                # Skip empty and comment lines.
+                if not line or line.startswith("+") or line.startswith("#"):
+                    continue
+                if '=' not in line:
+                    continue
+
+                key, value = line.split('=', 1)
+                key = key.strip()
+                value = value.strip()
+
+                # Empty value case.
+                if value == "" or value == "None":
+                    params[key] = None
+                    continue
+
+                try:
+                    params[key] = ast.literal_eval(value)
+                except Exception:
+                    params[key] = value # Value is parsed as a raw string.
+
+        # Match application type string to enum.
+        mode = params.get("mode")
+        if mode is None:
+            params["mode"] = None
+        elif isinstance(mode, int):
+            if mode == 1:
+                params["mode"] = ApplicationType.LTL
+            elif mode == 2:
+                params["mode"] = ApplicationType.LINER
+            elif mode == 3:
+                params["mode"] = ApplicationType.RAIL
+            elif mode == 4:
+                params["mode"] = ApplicationType.EXPRESS
+            else:
+                raise ValueError(f"Invalid mode, must be an int between 1 and 4. Current value: {mode}")
+        else:
+            raise TypeError("Mode must be either None, or an int of value either: 1 (LTL), 2(liner), 3 (rail), 4 (express).")
+        
         return params
 
     @staticmethod
@@ -84,7 +100,16 @@ class Config:
             targetReciprocity=params.get('targetReciprocity'),
             decayRate=params.get('decayRate'),
             hnRatio=params.get('hnRatio'),
-            ufCostRatio=params.get('ufCostRatio')
+            ufCostRatio=params.get('ufCostRatio'),
+            applicationType=params.get('mode'),
+            ltlRangeDensity=params.get('ltlRangeDensity'),
+            ltlRangeReciprocity=params.get('ltlRangeReciprocity'),
+            linerRangeDensity=params.get('linerRangeDensity'),
+            linerRangeReciprocity=params.get('linerRangeReciprocity'),
+            railRangeDensity=params.get('railRangeDensity'),
+            railRangeReciprocity=params.get('railRangeReciprocity'),
+            expressRangeDensity=params.get('expressRangeDensity'),
+            expressRangeReciprocity=params.get('expressRangeReciprocity')
         )
     
     @staticmethod
@@ -129,7 +154,7 @@ class Config:
         
     def get_instance_params_combinations(self):
         """
-        Returns all combinations of instqnce parameters if some of them are arrays.
+        Returns all combinations of instance parameters if some of them are arrays.
         """
         sweepParams = {name: value for name, value in vars(self.instanceGeneratorParams).items()
                     if isinstance(value, list) and name!="distributionPattern"}

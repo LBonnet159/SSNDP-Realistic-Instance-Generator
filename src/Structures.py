@@ -1,9 +1,16 @@
 from dataclasses import dataclass, asdict
 from pathlib import Path
-from typing import Optional
+from typing import Tuple, Optional
+from enum import Enum
 
 import numpy as np
 import networkx as nx
+
+class ApplicationType(Enum):
+    LTL = 1
+    LINER = 2
+    RAIL = 3
+    EXPRESS = 4
 
 @dataclass
 class Node:
@@ -57,6 +64,15 @@ class NetworkGeneratorParams:
     decayRate: float
     hnRatio: float
     ufCostRatio: float
+    applicationType: int
+    ltlRangeDensity: Tuple[float,float]
+    ltlRangeReciprocity: Tuple[float,float]
+    linerRangeDensity: Tuple[float,float]
+    linerRangeReciprocity: Tuple[float,float]
+    railRangeDensity: Tuple[float,float]
+    railRangeReciprocity: Tuple[float,float]
+    expressRangeDensity: Tuple[float,float]
+    expressRangeReciprocity: Tuple[float,float]
 
     def __post_init__(self):
         # networkEmulationPath + networkEmulationTimeLimit
@@ -115,6 +131,54 @@ class NetworkGeneratorParams:
             raise ValueError("Parameter ufCostRatio must be specified for non-random networks.")
         validate_value(self.ufCostRatio, lambda v: v > 0, "Parameter ufCostRatio value must be >0.")
         
+        # applicationType
+        if not (self.applicationType is None 
+                or self.applicationType is ApplicationType.LTL
+                or self.applicationType is ApplicationType.LINER
+                or self.applicationType is ApplicationType.RAIL
+                or self.applicationType is ApplicationType.EXPRESS):
+            raise ValueError("Parameter applicationType must be either None, or an application type (LTL, Express, Rail, or Liner).")
+        
+        if self.ltlRangeDensity is None:
+            raise ValueError("Parameter ltlRangeDensity must have a range of value in the form (min,max) given.")
+        validate_value(self.ltlRangeDensity[0], lambda v: 0.0 <= v <= 1.0, "Density must be in the range [0,1].")
+        validate_value(self.ltlRangeDensity[1], lambda v: 0.0 <= v <= 1.0, "Density must be in the range [0,1].")
+        
+        if self.ltlRangeReciprocity is None:
+            raise ValueError("Parameter ltlRangeReciprocity must have a range of value in the form (min,max) given.")
+        validate_value(self.ltlRangeReciprocity[0], lambda v: 0.0 <= v <= 1.0, "Reciprocity must be in the range [0,1].")
+        validate_value(self.ltlRangeReciprocity[1], lambda v: 0.0 <= v <= 1.0, "Reciprocity must be in the range [0,1].")
+
+        if self.linerRangeDensity is None:
+            raise ValueError("Parameter linerRangeDensity must have a range of value in the form (min,max) given.")
+        validate_value(self.linerRangeDensity[0], lambda v: 0.0 <= v <= 1.0, "Density must be in the range [0,1].")
+        validate_value(self.linerRangeDensity[1], lambda v: 0.0 <= v <= 1.0, "Density must be in the range [0,1].")
+
+        if self.linerRangeReciprocity is None:
+            raise ValueError("Parameter linerRangeReciprocity must have a range of value in the form (min,max) given.")
+        validate_value(self.linerRangeReciprocity[0], lambda v: 0.0 <= v <= 1.0, "Reciprocity must be in the range [0,1].")
+        validate_value(self.linerRangeReciprocity[1], lambda v: 0.0 <= v <= 1.0, "Reciprocity must be in the range [0,1].")
+
+        if self.railRangeDensity is None:
+            raise ValueError("Parameter railRangeDensity must have a range of value in the form (min,max) given.")
+        validate_value(self.railRangeDensity[0], lambda v: 0.0 <= v <= 1.0, "Density must be in the range [0,1].")
+        validate_value(self.railRangeDensity[1], lambda v: 0.0 <= v <= 1.0, "Density must be in the range [0,1].")
+
+        if self.railRangeReciprocity is None:
+            raise ValueError("Parameter railRangeReciprocity must have a range of value in the form (min,max) given.")
+        validate_value(self.railRangeReciprocity[0], lambda v: 0.0 <= v <= 1.0, "Reciprocity must be in the range [0,1].")
+        validate_value(self.railRangeReciprocity[1], lambda v: 0.0 <= v <= 1.0, "Reciprocity must be in the range [0,1].")
+
+        if self.expressRangeDensity is None:
+            raise ValueError("Parameter expressRangeDensity must have a range of value in the form (min,max) given.")
+        validate_value(self.expressRangeDensity[0], lambda v: 0.0 <= v <= 1.0, "Density must be in the range [0,1].")
+        validate_value(self.expressRangeDensity[1], lambda v: 0.0 <= v <= 1.0, "Density must be in the range [0,1].")
+
+        if self.expressRangeReciprocity is None:
+            raise ValueError("Parameter expressRangeReciprocity must have a range of value in the form (min,max) given.")
+        validate_value(self.expressRangeReciprocity[0], lambda v: 0.0 <= v <= 1.0, "Reciprocity must be in the range [0,1].")
+        validate_value(self.expressRangeReciprocity[1], lambda v: 0.0 <= v <= 1.0, "Reciprocity must be in the range [0,1].")
+
     def __str__(self):
         return " | ".join(f"{k}={v}" for k, v in asdict(self).items())
         

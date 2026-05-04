@@ -1,9 +1,9 @@
 +   General configuration parameters.
 defaultInstancePath=data/Instances
 defaultNetworkPath=data/Networks
-folder=Agg_TESTS_23_10_2025
-networkNb=100
-instanceNb=0
+folder=None
+networkNb=1
+instanceNb=1
 networkSeed=0
 demandSeed=0
 
@@ -11,25 +11,34 @@ demandSeed=0
 networkEmulationPath=
 networkEmulationTimeLimit=
 randomGeneration=False
-capacity=1000
-bboxWidth=1000
-bboxHeight=1000
-targetNodeNb=40
+capacity=100
+bboxWidth=1
+bboxHeight=1
+targetNodeNb=50
 targetArcNb=
 targetDensity=0.3
-targetReciprocity=0.7
-decayRate=30
-hnRatio=0.1
+targetReciprocity=0.8
+decayRate=10
+hnRatio=0.2
 ufCostRatio=0.05
+mode=5
+ltlRangeDensity=(0.06,0.74)
+ltlRangeReciprocity=(0.71,1.0)
+linerRangeDensity=(0.02,0.82)
+linerRangeReciprocity=(0.58,1.0)
+railRangeDensity=(0.02,0.06)
+railRangeReciprocity=(1.0,1.0)
+expressRangeDensity=(0.03,0.06)
+expressRangeReciprocity=(0.19,0.81)
 
 +   Demand generation parameters.
 doStatic=False
-commodityNb=1000
+commodityNb=10
 quantityToCapaMean=0.1
 quantityToCapaDev=0.5
 sameRegionRatio=
 disparityRatio=
-horizon=48
+horizon=8
 flexibilityMean=0.5
 flexibilityDev=0.17
 criticalTime=

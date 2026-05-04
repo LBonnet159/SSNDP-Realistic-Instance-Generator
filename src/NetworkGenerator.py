@@ -2,12 +2,14 @@ import math
 import random
 import statistics
 import time
+import copy
 import numpy as np
 import heapq
 import matplotlib.pyplot as plt
 from itertools import permutations
 from pathlib import Path
 from Structures import Node, Arc, NetworkGeneratorParams, Network
+from Structures import ApplicationType
 
 class NetworkGenerator:
     """
@@ -27,7 +29,7 @@ class NetworkGenerator:
             - params (NetworkGeneratorParams): Configuration parameters controlling generation.
         """
         self.seed = seed
-        self.params = params
+        self.params = copy.deepcopy(params)
         self.rng = random.Random(0)
         if seed is not None:
             self.rng = random.Random(seed)
@@ -183,6 +185,21 @@ class NetworkGenerator:
         np.random.seed(networkSeed)
         random.seed(networkSeed)
 
+        # Override density and reciprocity based on application type.
+        if (self.params.applicationType == ApplicationType.EXPRESS):
+            self.params.targetDensity = random.uniform(self.params.expressRangeDensity[0], self.params.expressRangeDensity[1])
+            self.params.targetReciprocity = random.uniform(self.params.expressRangeReciprocity[0], self.params.expressRangeReciprocity[1])
+        elif (self.params.applicationType == ApplicationType.RAIL):
+            self.params.targetDensity = random.uniform(self.params.railRangeDensity[0], self.params.railRangeDensity[1])
+            self.params.targetReciprocity = random.uniform(self.params.railRangeReciprocity[0], self.params.railRangeReciprocity[1])
+        elif (self.params.applicationType == ApplicationType.LINER):
+            self.params.targetDensity = random.uniform(self.params.linerRangeDensity[0], self.params.linerRangeDensity[1])
+            self.params.targetReciprocity = random.uniform(self.params.linerRangeReciprocity[0], self.params.linerRangeReciprocity[1])
+        elif (self.params.applicationType == ApplicationType.LTL):
+            self.params.targetDensity = random.uniform(self.params.ltlRangeDensity[0], self.params.ltlRangeDensity[1])
+            self.params.targetReciprocity = random.uniform(self.params.ltlRangeReciprocity[0], self.params.ltlRangeReciprocity[1])
+
+        # Set number of arcs to generate.
         self.compute_arc_number()
 
         # Fix reciprocity at target density if not specified.
@@ -199,7 +216,7 @@ class NetworkGenerator:
             self.validity_check()
 
             # Plot network for debugging purposes.
-            plotNetwork=False
+            plotNetwork=True
             if plotNetwork:
                 self.plot_network()
 
@@ -216,7 +233,7 @@ class NetworkGenerator:
         Arcs are created randomly until the target arc count is reached.
 
         Notes:
-            - Uses `targetReciprocity` if specified.
+            Uses `targetReciprocity` if specified.
         """
 
         useReciprocity = self.params.targetReciprocity is not None
@@ -652,8 +669,8 @@ class NetworkGenerator:
         plt.scatter(spokes[:, 0], spokes[:, 1], color='black', marker='x', s=50, edgecolors='white', label="Spokes", zorder=2)
         plt.scatter(hubs[:, 0], hubs[:, 1], color='red', marker='o', s=150, edgecolors='white', label="Hubs", zorder=2)
 
-        plt.xlim(0, 1)
-        plt.ylim(0, 1)
+        plt.xlim(0, self.params.bboxHeight)
+        plt.ylim(0, self.params.bboxHeight)
         plt.legend()
         plt.gca().set_aspect('equal', adjustable='box')
         plt.savefig("generated_network.png", dpi=300, bbox_inches="tight")
