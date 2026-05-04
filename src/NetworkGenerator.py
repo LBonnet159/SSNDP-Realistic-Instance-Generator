@@ -216,7 +216,7 @@ class NetworkGenerator:
             self.validity_check()
 
             # Plot network for debugging purposes.
-            plotNetwork=True
+            plotNetwork=False
             if plotNetwork:
                 self.plot_network()
 
