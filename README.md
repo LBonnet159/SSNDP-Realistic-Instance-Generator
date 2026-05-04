@@ -1,13 +1,13 @@
 # SSNDP-Realistic-Instance-Generator
 This archive is distributed under the MIT license.
 
-The software and data in this repository were used in the research reported in the article "A Complex Network Analysis Approach for Generating Realistic Instances of the Scheduled Service Network Design Problem" by Louis Bonnet, Simon Belieres, Mike Hewitt, and Sandra Ulrich Ngueveu.
+The software and data in this repository were used in the research reported in the article "An Open-Source Generator for Realistic Instances of the Scheduled Service Network Design Problem" by Louis Bonnet, Simon Belieres, Mike Hewitt, and Sandra Ulrich Ngueveu.
 
 ## Overview
-The Service Network Design Problem (SNDP), and its timed variant the Scheduled SNDP (SSNDP), are challenging optimization problems arising in freight and transportation systems. This software generates realistic instances for these problems based on the literature on Complex Networks.
+The Service Network Design Problem (SNDP), and its timed variant the Scheduled SNDP (SSNDP), are challenging optimization problems arising in freight transportation systems. This software generates realistic instances with hub-and-spoke networks for these problems with some of its parameters based metrics from the literature on Complex Networks and Complex Networks Analysis.
 
 Each instance, either of the SNDP or the SSNDP, consists of:
-+ A __directed network__ with nodes and arcs
++ A __directed network__ with a node set and an arc set
 + A __set of commodities__
 
 Networks and instances can be generated using __controlled parameters__ that govern structural features such as __density__, __reciprocity__, and __hub–spoke organization__.
@@ -38,10 +38,10 @@ python src/main.py
 ```
 The generator automatically reads parameters from [Config.txt](src/Config.txt).
 
-By default, generated networks are stored in [Networks/](data/Networks/), and generated instances in [Instances/](data/Instances/).
+By default, the generated networks are stored in [Networks/](data/Networks/), and the generated instances in [Instances/](data/Instances/). It can be changed with the parameters `defaultInstancePath` and `defaultNetworkPath`, respectively.
 
 ## Configuration File
-All parameters are read from file [Config.txt](src/Config.txt).
+All the parameters are read from the file [Config.txt](src/Config.txt). All the parameters marked as optional can be assigned the value `None` to be disabled.
 
 The file is organized in three sections:
 ### General Parameters
@@ -64,14 +64,23 @@ The file is organized in three sections:
 | `networkEmulationTimeLimit` | float > 0     | Time limit for network emulation                                         |
 | `randomGeneration`          | bool          | Whether to use random or structured hub-and-spoke generation             |
 | `capacity`                  | float > 0     | Capacity of each arc                                                     |
-| `bboxWidth`, `bboxHeight`   | float > 0     | Dimensions of the bounding box for arc distance                        |
+| `bboxWidth`, `bboxHeight`   | float > 0     | Dimensions of the bounding box for arc distance                          |
 | `targetNodeNb`              | int > 0       | Number of nodes                                                          |
 | `targetArcNb`               | int > 0       | Arc budget (optional alternative to density)                             |
 | `targetDensity`             | float ∈ [0,1] | Desired network density                                                  |
-| `targetReciprocity`         | float ∈ [0,1] | Desired proportion of bidirectional arcs                                         |
-| `decayRate`                 | float > 0     | Decay rate controlling how spread out clusters are                               |
+| `targetReciprocity`         | float ∈ [0,1] | Desired proportion of bidirectional arcs                                 |
+| `decayRate`                 | float > 0     | Decay rate controlling how spread out clusters are                       |
 | `hnRatio`                   | float ∈ (0,1] | Ratio of hub nodes to total nodes                                        |
 | `ufCostRatio`               | float > 0     | Ratio between unit and fixed costs                                       |
+| `mode`                      | int ∈ {1,2,3,4}    | Transportation mode: 1 (LTL), 2 (Liner), 3 (Rail), 4 (Express)      |
+| `ltlRangeDensity`           | (float,float) ∈ [0,1]<sup>2</sup>  | Density lower and upper bound of the LTL transportation mode networks. Default: (0.06,0.74).     |
+| `ltlRangeReciprocity`           | (float,float) ∈ [0,1]<sup>2</sup>  | Reciprocity lower and upper bound of the LTL transportation mode networks. Default: (0.71,1.0).     |
+| `linerRangeDensity`           | (float,float) ∈ [0,1]<sup>2</sup>  | Density lower and upper bound of the Liner transportation mode networks. Default: (0.02,0.82).     |
+| `linerRangeReciprocity`           | (float,float) ∈ [0,1]<sup>2</sup>  | Reciprocity lower and upper bound of the Liner transportation mode networks. Default: (0.58,1.0).     |
+| `railRangeDensity`           | (float,float) ∈ [0,1]<sup>2</sup>  | Density lower and upper bound of the Rail transportation mode networks. Default: (0.02,0.06).     |
+| `railRangeReciprocity`           | (float,float) ∈ [0,1]<sup>2</sup>  | Reciprocity lower and upper bound of the Rail transportation mode networks. Default: (1.0,1.0).     |
+| `expressRangeDensity`           | (float,float) ∈ [0,1]<sup>2</sup>  | Density lower and upper bound of the Express transportation mode networks. Default: (0.03,0.06).     |
+| `expressRangeReciprocity`           | (float,float) ∈ [0,1]<sup>2</sup>  | Reciprocity lower and upper bound of the Express transportation mode networks. Default: (0.19,0.81).     |
 
 ### Demand Generation Parameters
 
@@ -92,7 +101,7 @@ The range of the parameters is checked before the generation and an error is rep
 
 In order to produce networks and instances with different inputs more easily, values given to parameters in the file [Config.txt](src/Config.txt) can
 be written as lists. For instance, if _targetDensity_=[0.2,0.5,0.8], and all other parameters have a single value (e.g. , _targetReciprocity_=0.5), three sets of configuration paremeters
-will be used.
+will be used for each of the values of the parameter _targetDensity_.
 
 ## Parameter Combinations
 Any parameter in `Config.txt` can take multiple values (as a list).
@@ -106,7 +115,7 @@ targetReciprocity=0.5
 ```
 Generates three sets of networks with the same reciprocity and varying densities.
 
-The software validates all parameter values before execution. An error is returned to the user if incoherent values are detected.
+The software validates all parameter values before execution. An error is returned to the user if incoherent values are detected (i.e., out of bound or invalid type values).
 
 ## Output Specification
 
