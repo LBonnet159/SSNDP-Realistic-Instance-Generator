@@ -82,7 +82,8 @@ class InstanceGenerator:
             self.commodities.extend(Commodity(src, dest, quantity) for (src, dest), quantity in zip(staticPairs, quantities))
         else:
             flexibleTimes = self.generate_flexible_times(meanTravelTime)
-            tuples = self.generate_timed_commodities(candidates, travelTimes, flexibleTimes)
+            uniqueFlexibleTimes = np.unique(flexibleTimes)
+            tuples = self.generate_timed_commodities(candidates, travelTimes, uniqueFlexibleTimes)
             self.commodities.extend(Commodity(src, dest, quantity, avTime, dueTime) 
                                     for (src, dest, avTime, dueTime), quantity in zip(tuples, quantities))
             if self.params.preProcessingSSNDP:
@@ -213,7 +214,7 @@ class InstanceGenerator:
         Args:
             validPairs (list[tuple[int,int]]): Valid origin–destination pairs.
             travelTimes (np.ndarray): Matrix of travel times.
-            flexibleTime (np.ndarray): Per-commodity flexibility durations.
+            flexibleTime (np.ndarray): Array of possible flexibility times.
 
         Returns:
             list[tuple[int,int,int,int]]: Feasible (src, dest, available, due) tuples.
@@ -222,27 +223,25 @@ class InstanceGenerator:
             ValueError: If unfeasible timing combinations are produced.
         """
         timedCandidates = []
-        i = 0
         for src, dest in validPairs:
             L = int(travelTimes[src][dest])
-            f = flexibleTime[i]
-            maxStart = self.params.horizon - 1 - f - L
-            if maxStart < 0:
-                raise ValueError("Unfeasible timed commodity.")
-                
-            # Enumerate all possible available times
-            for e in range(maxStart + 1):
-                l = e + L + f
-                if l >= self.params.horizon:
+            for f in flexibleTime:
+                maxStart = self.params.horizon - 1 - f - L
+                if maxStart < 0:
                     continue
-                
-                if self.params.criticalTime is not None and self.params.criticalTime > 1:
-                    e = math.floor(e / self.params.criticalTime) * self.params.criticalTime
-                    l = math.ceil(l / self.params.criticalTime) * self.params.criticalTime
+                # Enumerate all possible available times
+                for e in range(maxStart + 1):
+                    l = e + L + f
                     if l >= self.params.horizon:
                         continue
-                
-                timedCandidates.append((src, dest, e, l))
+                    
+                    if self.params.criticalTime is not None and self.params.criticalTime > 1:
+                        e = math.floor(e / self.params.criticalTime) * self.params.criticalTime
+                        l = math.ceil(l / self.params.criticalTime) * self.params.criticalTime
+                        if l >= self.params.horizon:
+                            continue
+                    
+                    timedCandidates.append((src, dest, e, l))
         
         return timedCandidates
 
@@ -253,7 +252,7 @@ class InstanceGenerator:
         Args:
             validPairs (list[tuple[int,int]]): Valid origin destination pairs.
             travelTimes (np.ndarray): Travel times matrix.
-            flexibleTime (np.ndarray): Array of flexibility times.
+            flexibleTime (np.ndarray): Array of possible flexibility times.
 
         Returns:
             list[tuple[int,int,int,int]]: Selected timed commodities.
@@ -276,6 +275,17 @@ class InstanceGenerator:
         return selected
 
     def generate_flexible_times(self, meanTravelTime):
+        """
+        Generate a flexible time for each commodity. The flexible time
+        can be defined as the time between a commodity due time, and the earliest time
+        at which it can reach its destination.
+
+        Args:
+            meanTravelTime: Mean travel time between any node pair of the transportation network.
+
+        Returns:
+            flexibleTimes: Array of flexible time per commodity.
+        """
         meanFlex=meanTravelTime*self.params.flexibilityMean
         stdDevFlex=meanFlex*self.params.flexibilityDev
         flexibleTimes = np.random.normal(loc=meanFlex, scale=stdDevFlex, size=self.params.commodityNb)
