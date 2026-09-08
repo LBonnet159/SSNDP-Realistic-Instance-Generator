@@ -1,23 +1,43 @@
-# SSNDP-Realistic-Instance-Generator
-This archive is distributed under the MIT license.
+# An Open-Source Generator for Realistic Instances of the Scheduled Service Network Design Problem
 
-The software and data in this repository are a snapshot of the software and data that were used in the research reported on in the paper "An Open-Source Generator for Realistic Instances of the Scheduled Service Network Design Problem" by L. Bonnet, S. Belieres, M. Hewitt, and S. U. Ngueveu.
+This archive is distributed under the [MIT license](LICENSE).
 
-## Overview
-The Service Network Design Problem (SNDP), and its timed variant the Scheduled SNDP (SSNDP), are challenging optimization problems arising in freight transportation systems. This software generates realistic instances with hub-and-spoke networks for these problems with some of its parameters based metrics from the literature on Complex Networks and Complex Networks Analysis.
+The software and data in this repository are used in the research reported on in the paper "An Open-Source Generator for Realistic Instances of the Scheduled Service Network Design Problem" by L. Bonnet, S. Belieres, M. Hewitt, and S. U. Ngueveu, prior to final acceptance at the [INFORMS Journal on Computing](https://pubsonline.informs.org/journal/ijoc).
+
+## Cite
+To cite the contents of this repository, please cite both the paper and the snapshot of the repository, using their respective DOIs:
+
+https://doi.org/10.1287/ijoc.2025.1704
+
+https://doi.org/10.1287/ijoc.2025.1704.cd
+
+Below is the Bibtex for citing the snapshot of the repository:
+```
+@misc{BonnetBelieresHewittNgueveu2026,
+  author =        {Louis Bonnet and Simon Belieres and Mike Hewitt and Sandra Ulrich Ngueveu},
+  publisher =     {INFORMS Journal on Computing},
+  title =         {An Open-Source Generator for Realistic Instances of the Scheduled Service Network Design Problem},
+  year =          {2026},
+  doi =           {10.1287/ijoc.2025.1704.cd},
+  url =           {https://github.com/INFORMSJoC/2025.1704},
+  note =          {Available for download at https://github.com/INFORMSJoC/2025.1704},
+}
+```
+
+## Description
+The Service Network Design Problem (SNDP), and its timed variant the Scheduled SNDP (SSNDP), are challenging optimization problems arising in freight transportation systems. This software generates instances with hub-and-spoke networks for these problems with some of its parameters based on metrics from the literature on Complex Networks and Complex Networks Analysis.
 
 Each instance, either of the SNDP or the SSNDP, consists of:
 + A __directed network__ with a node set and an arc set
 + A __set of commodities__
 
-Networks and instances can be generated using __controlled parameters__ that govern structural features such as __density__, __reciprocity__, and __hub–spoke organization__.
+Networks can be generated using __controlled parameters__ that govern structural features such as __density__, __reciprocity__, and __hub–spoke organization__.
 
 ## Repository Structure
 
 ```bash
-├── environment.yml          # Environment configuration for conda.
-├── requirements.txt         # Environment requirements for pip.
-
+environment.yml          # Environment configuration for conda.
+requirements.txt         # Environment requirements for pip.
 src/
     ├── Config.py                # Configuration parsing and validation
     ├── Structures.py            # Core data structures (nodes, arcs, commodities)
@@ -25,11 +45,10 @@ src/
     ├── InstanceGenerator.py     # Instance and demand generator
     ├── main.py                  # Entry point for execution
     └── Config.txt               # Configuration file
-
 data/
     ├── Networks/                # Default path for generated networks
-    ├── Instances/               # Default path for generated instances
-    └── Networks/Benchmark/      # Benchmark networks used in the article
+        └── Benchmark/           # Benchmark networks used in the article
+    └── Instances/               # Default path for generated instances
 ```
 
 ## Running the Generator
@@ -54,8 +73,8 @@ The file is organized in three sections:
 | `folder`              | str     | Optional subfolder for organizing runs                        |
 | `networkNb`           | int > 0 | Number of networks to generate                                |
 | `instanceNb`          | int > 0 | Number of instances to generate per network                   |
-| `networkSeed`         | int > 0 | Optional seed for reproducible network generation             |
-| `demandSeed`          | int > 0 | Optional seed for reproducible demand generation              |
+| `networkSeed`         | int     | Optional seed for reproducible network generation             |
+| `demandSeed`          | int     | Optional seed for reproducible demand generation              |
 
 ### Network Generation Parameters
 
@@ -74,7 +93,7 @@ The file is organized in three sections:
 | `hnRatio`                   | float ∈ (0,1] | Ratio of hub nodes to total nodes                                        |
 | `priceRatio`                | float > 0     | Conversion rate of distance in kilometers to fixed cost.                 |
 | `ufCostRatio`               | float > 0     | Ratio between unit and fixed costs                                       |
-| `mode`                      | int ∈ {1,2,3,4}    | Transportation mode: 1 (LTL), 2 (Liner), 3 (Rail), 4 (Express)      |
+| `mode`                      | int ∈ {1,2,3,4}    | Transportation mode (optional): 1 (LTL), 2 (Liner), 3 (Rail), 4 (Express)      |
 | `ltlRangeDensity`           | (float,float) ∈ [0,1]<sup>2</sup>  | Density lower and upper bound of the LTL transportation mode networks. Default: (0.06,0.74).     |
 | `ltlRangeReciprocity`           | (float,float) ∈ [0,1]<sup>2</sup>  | Reciprocity lower and upper bound of the LTL transportation mode networks. Default: (0.71,1.0).     |
 | `linerRangeDensity`           | (float,float) ∈ [0,1]<sup>2</sup>  | Density lower and upper bound of the Liner transportation mode networks. Default: (0.02,0.82).     |
@@ -97,15 +116,12 @@ The file is organized in three sections:
 | `discretization`                          | int > 0       | Number of homogeneous time periods in the planning horizon                        |
 | `speed`                                   | float > 0     | Vehicle speed in kilometers per hour.                                             |
 | `flexibilityMean`, `flexibilityDev`       | float ∈ [0,1] | Distribution of time flexibility relative to shortest path                        |
-| `criticalTime`                            | int > 0       | Time rounding for available and due times                                         |
+| `criticalTime`                            | int > 0       | Time rounding for available and due times. Must no exceed discretization value    |
 | `distributionPattern`                     | list[float]   | Probability distribution of available times, size must be equal to discretization |
 | `preProcessingSSNDP`                      | bool          | Whether to add preprocessing information (time windows) for SSNDP instances       |
 
-The range of the parameters is checked before the generation and a ValueError is reported to the user if incoherent values are given.
-
-In order to produce networks and instances with different inputs more easily, values given to parameters in the file [Config.txt](src/Config.txt) can
-be written as lists. For instance, if _targetDensity_=[0.2,0.5,0.8], and all other parameters have a single value (e.g. , _targetReciprocity_=0.5), three sets of configuration paremeters
-will be used for each of the values of the parameter _targetDensity_.
+The validity of all the parameters of the configuration file is checked before running the generation process and a ValueError
+is reported to the user if incoherent values are given.
 
 ## Parameter Combinations
 Any parameter in `Config.txt` can take multiple values (as a list).
@@ -117,14 +133,12 @@ Example:
 targetDensity=[0.2,0.5,0.8]
 targetReciprocity=0.5
 ```
-Generates three sets of networks with the same reciprocity and varying densities.
-
-The software validates all parameter values before execution. An error is returned to the user if incoherent values are detected (i.e., out of bound or invalid type values).
+Generates three sets of networks with the same reciprocity and varying densities. The same parameter validation process detailed before is applied to all combinations.
 
 ## Output Specification
 
 ### File Naming Convention
-Each generated network or instance file includes encoded parameters in its name.
+Each generated network or instance file includes encoded parameters in its name. Optional parameters not used are not part of the generated file name.
 
 #### Networks
 | Parameter           | Label |
@@ -140,11 +154,13 @@ Each generated network or instance file includes encoded parameters in its name.
 #### (S)SNDP Instances
 | Parameter            | Label |
 | -------------------- | ----- |
+| `commodityNb`        | C     |
 | `quantityToCapaMean` | MCQ   |
 | `quantityToCapaDev`  | DCQ   |
 | `sameRegionRatio`    | SR    |
 | `disparityRatio`     | DR    |
 | `horizon`            | H     |
+| `discretization`     | D     |
 | `flexibilityMean`    | FM    |
 | `flexibilityDev`     | FD    |
 | `criticalTime`       | CT    |
@@ -163,41 +179,45 @@ Examples of outputs names:
 #### Output files structure
 The file structure of the outputs of the generator follows the structure:
 ```
-NODES,\<number of nodes generated\>
+NODES,<number of nodes generated>
 ...
 node id, cluster id, x, y
 ...
-ARCS,\<number of arcs generated\>
+ARCS,<number of arcs generated>
 ...
 arc id, origin id, destination id, unit cost, fixed cost, capacity, distance
 ...
-COMMODITIES,\<number of commodities generated\>
+COMMODITIES,<number of commodities generated>
 ...
 commodity id, origin id, destination id, quantity, available time, due time
 ...
-horizon=\<length of the planning horizon\>
-distribution_pattern=\<_distributionPattern_\>
-COMMODITY_NODE_TIMEWINDOWS,\<number of per commodity, per node, time windows\>
+horizon=<length of the planning horizon>
+discretizatio=<discretization>
+distribution_pattern=<distributionPattern>
+COMMODITY_NODE_TIMEWINDOWS,<number of per commodity, per node, time windows>
 ...
 time window id, commodity id, node id, lower bound, upper bound
 ...
-COMMODITY_ARC_TIMEWINDOWS,\<number of per commodity, per arc, time windows\>
+COMMODITY_ARC_TIMEWINDOWS,<number of per commodity, per arc, time windows>
 ...
 time window id, commodity id, arc id, lower bound, upper bound
 ...
 ```
 Some remarks:
-+ The x and y coordinates are not given if no bounding box width and heigth was specified.
++ The x and y coordinates are not given if no bounding box width and height was specified.
 + The arc distance, in network files, is an euclidean distance represented by float numbers. It is not given in SNDP instance files. It is given as a number of time period in SSNDP instance files.
 + The horizon is only given for SSNDP instance files.
 + The distribution pattern is only given for SSNDP instance files where the associated parameter was specified.
 + The two lists of time windows (for arcs and nodes) are given only for SSNDP instance files when the parameter _preProcessingSSNDP_=True.
 
-## Reproducibility Instructions
+## Replicating
 
 This project is designed to be fully reproducible using either `pip` or `conda`. Use either `requirements.txt` or `environment.yml` to do so.
 
-## How to contribute
-Thank you for considering contributing to our project! To report bugs and ask questions, please refer to the issue tracker. You can also address a problem by (1) forking the project, (2) correcting the bug / adding a feature, and (3) generating a pull request. However, we recommend that you first contact the authors and discuss the desired feature request.
+## Ongoing Development
+This code is being developed on an on-going basis at the author's [GitHub site](https://github.com/LBonnet159/SSNDP-Realistic-Instance-Generator).
 
-You are also very welcome if you want to upload in our repository the instances you generated with our generator and used in your work! In this way, other researchers can use the same set of instances as benchmark, without having to re-generate such instances using the parameters you used. If this is the case, please send us an email.
+If you are interested in specific areas of the generator, or in adding new functionalities to it, we encourage you to contact the authors and discuss the desired feature request.
+
+## Support
+For support in using this software, submit an [issue](https://github.com/LBonnet159/SSNDP-Realistic-Instance-Generator/issues/new).
