@@ -92,7 +92,7 @@ def main():
             print(f"Instance generation parameters:\n{params}")
             for networkFile in networkPath.glob("*.txt"):
                 network = Network.from_file(networkFile, isArcDistance=True)
-                currentSeed = config.configParams.networkSeed
+                currentSeed = config.configParams.demandSeed
                 for i in range(config.configParams.instanceNb):
                     instanceGenerator = InstanceGenerator(currentSeed, params, network)
                     instanceGenerator.generate()

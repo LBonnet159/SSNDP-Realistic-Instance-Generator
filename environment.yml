@@ -7,3 +7,4 @@ dependencies:
   - scipy>=1.15
   - networkx>=3.4
   - matplotlib>=3.10
+  

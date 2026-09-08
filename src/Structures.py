@@ -63,6 +63,7 @@ class NetworkGeneratorParams:
     targetReciprocity: float
     decayRate: float
     hnRatio: float
+    priceRatio: float
     ufCostRatio: float
     applicationType: int
     ltlRangeDensity: Tuple[float,float]
@@ -125,6 +126,11 @@ class NetworkGeneratorParams:
         if not self.randomGeneration and self.hnRatio is None:
             raise ValueError("Parameter hnRatio must be specified for non-random networks.")
         validate_value(self.hnRatio, lambda v: 0.0 < v <= 1.0, "Parameter hnRatio value must be in the range ]0,1].")
+
+        # priceRatio
+        if not self.randomGeneration and self.priceRatio is None:
+            raise ValueError("Parameter priceRatio must be specified for non-random networks.")
+        validate_value(self.priceRatio, lambda v: v > 0, "Parameter priceRatio value must be >0.")
 
         # ufCostRatio
         if not self.randomGeneration and self.ufCostRatio is None:
@@ -193,6 +199,8 @@ class InstanceGeneratorParams:
     disparityRatio: float
     # Timed instance generation.
     horizon: int
+    discretization: int
+    speed: float
     flexibilityMean: float
     flexibilityDev: float
     criticalTime: int
@@ -231,8 +239,18 @@ class InstanceGeneratorParams:
         if not self.doStatic:
             # horizon
             if self.horizon is None:
-                raise ValueError("Parameter horizon must be specified when generating a SSNDP instance.")
+                raise ValueError("Parameter horizon (in number of days) must be specified when generating a SSNDP instance.")
             validate_value(self.horizon, lambda v: v > 0, "Parameter horizon value must be >0.")
+
+            # discretization
+            if self.discretization is None:
+                raise ValueError("Parameter discretization (discretization of the horizon) must be specified when generating a SSNDP instance.")
+            validate_value(self.discretization, lambda v: v > 0, "Parameter discretization value must be >0.")
+
+            # speed
+            if self.speed is None:
+                raise ValueError("Parameter speed must be specified when generating a SSNDP instance.")
+            validate_value(self.speed, lambda v: v > 0, "Parameter speed value must be >0.")
 
             # flexibilityMean
             if self.flexibilityMean is None:
@@ -246,13 +264,13 @@ class InstanceGeneratorParams:
 
             # criticalTime
             if self.criticalTime is not None:
-                validate_value(self.criticalTime, lambda v: 0 < v <= self.horizon, "Parameter criticalTime must be >0 and ≤ horizon.")
+                validate_value(self.criticalTime, lambda v: 0 < v <= self.discretization, "Parameter criticalTime must be >0 and ≤ discretization.")
             
             # distributionPattern
             if self.distributionPattern is not None:
                 dist = np.array(self.distributionPattern, dtype=float)
-                if len(dist) != self.horizon:
-                    raise ValueError("Parameter distributionPattern must be of same length as parameter horizon.")
+                if len(dist) != self.discretization:
+                    raise ValueError("Parameter distributionPattern must be of same length as parameter discretization.")
                 probaSum = 0
                 for proba in dist:
                     probaSum+=proba
@@ -280,7 +298,6 @@ class Network:
         arcs: list[Arc] = []
         with open(path, "r") as f:
             lines = [line.strip() for line in f if line.strip()]
-
         i = 0
         if not lines[i].startswith("NODES,"):
             raise ValueError("Expected 'NODES,<count>' header at line 1")
@@ -299,6 +316,12 @@ class Network:
             elif len(splitLine) == 2:
                 val = splitLine[1]
                 clusterId = int(val) if val.isdigit() and int(val) >= 0 else None
+            elif len(splitLine) == 3:
+                sX, sY = splitLine[1:3]
+                try:
+                    x, y = float(sX), float(sY)
+                except ValueError:
+                    pass
             elif len(splitLine) == 4:
                 cId, sX, sY = splitLine[1:4]
                 clusterId = int(cId) if cId.isdigit() and int(cId) >= 0 else None
@@ -421,18 +444,19 @@ class Instance:
         self.commodities: list[Commodity] = commodities if commodities is not None else []
 
     @classmethod
-    def from_file(cls, path: Path):
-        network = Network.from_file(path)
+    def from_file(cls, path: Path, isArcDistance: bool = True):
+        network = Network.from_file(path, isArcDistance)
         nodeNb = len(network.nodes)
         arcNb = len(network.arcs)
 
         with open(path, "r") as f:
             lines = [line.strip() for line in f if line.strip()]
 
-        i = nodeNb + arcNb + 1
+        i = nodeNb + arcNb + 2
         if not lines[i].startswith("COMMODITIES,"):
             raise ValueError(f"Expected 'COMMODITIES,<count>' header at line {i}")
         commodityNb = int(lines[i].split(",")[1])
+        i += 1
         commodities: list[Commodity] = []
         for _ in range(commodityNb):
             # id, src, dest, quantity, available time, due time

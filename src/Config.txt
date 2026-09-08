@@ -1,27 +1,34 @@
 +   General configuration parameters.
 defaultInstancePath=data/Instances
 defaultNetworkPath=data/Networks
-folder=None
+folder=TestBugGitHub
 networkNb=1
 instanceNb=1
 networkSeed=0
 demandSeed=0
 
-+   Network generation parameters.
++ General network configuration parameters.
 networkEmulationPath=
 networkEmulationTimeLimit=
 randomGeneration=False
-capacity=100
-bboxWidth=1
-bboxHeight=1
-targetNodeNb=50
-targetArcNb=
-targetDensity=0.3
-targetReciprocity=0.8
-decayRate=10
+
++   Node generation parameters.
+targetNodeNb=30
 hnRatio=0.2
+decayRate=30
+
++   Arc generation parameters.
+targetArcNb=
+targetDensity=0.2
+targetReciprocity=0.8
+bboxWidth=700
+bboxHeight=900
+capacity=100
+priceRatio=1.7
 ufCostRatio=0.05
-mode=None
+mode=
+
++ Transportation mode presets.
 ltlRangeDensity=(0.06,0.74)
 ltlRangeReciprocity=(0.71,1.0)
 linerRangeDensity=(0.02,0.82)
@@ -33,14 +40,16 @@ expressRangeReciprocity=(0.19,0.81)
 
 +   Demand generation parameters.
 doStatic=False
-commodityNb=10
+commodityNb=1000
 quantityToCapaMean=0.1
 quantityToCapaDev=0.5
 sameRegionRatio=
 disparityRatio=
-horizon=8
+horizon=6
+discretization=48
+speed=100
 flexibilityMean=0.5
 flexibilityDev=0.17
 criticalTime=
 distributionPattern=
-preProcessingSSNDP=False
+preProcessingSSNDP=True

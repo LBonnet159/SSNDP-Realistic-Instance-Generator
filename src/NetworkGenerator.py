@@ -30,10 +30,7 @@ class NetworkGenerator:
         """
         self.seed = seed
         self.params = copy.deepcopy(params)
-        self.rng = random.Random(0)
-        if seed is not None:
-            self.rng = random.Random(seed)
-        
+        self.rng = random.Random(seed)
         self.nodes: list[Node] = []
         self.arcs: list[Arc] = []
         self.pairs = set()
@@ -70,10 +67,11 @@ class NetworkGenerator:
         if (self.params.networkEmulationTimeLimit is None):
             raise ValueError("Time limit for network emulation not specified. Specify in Config.txt file.")
         
-        # Set seed for reproductibility.
-        networkSeed = self.rng.randint(0, 2**32-1)
-        np.random.seed(networkSeed)
-        random.seed(networkSeed)
+        # Set seed for reproducibility.
+        if self.seed is not None:
+            networkSeed = self.rng.randint(0, 2**32-1)
+            np.random.seed(networkSeed)
+            random.seed(networkSeed)
 
         # Read network to emulate.
         refNetwork = Network.from_file(Path(self.params.networkEmulationPath), isArcDistance=True)
@@ -104,12 +102,12 @@ class NetworkGenerator:
 
         # Compute the mean capacity and unit to fixed cost ratio.
         capacities=[]
-        priceRatio=[]
+        ufRatio=[]
         for arc in refNetwork.arcs:
             capacities.append(arc.capacity)
-            priceRatio.append(arc.unit / arc.fixed)
+            ufRatio.append(arc.unit / arc.fixed)
         refAvgCapa = statistics.mean(capacities)
-        refAvgPriceRatio = statistics.mean(priceRatio)
+        refAvgUfRatio = statistics.mean(ufRatio)
         
         # Compute CNA metrics of reference graph.
         refDensity, refRecipro, refAvgCC, refAvgSPL, refASR = refNetwork.compute_metrics()
@@ -119,7 +117,13 @@ class NetworkGenerator:
         timeLimit = self.params.networkEmulationTimeLimit
         start = time.time()
         genParams = NetworkGeneratorParams(None, None, False, refAvgCapa, refBboxWidth, refBboxHeight, 
-                                           self.params.targetNodeNb, None, refDensity, refRecipro, 30, self.params.hnRatio, refAvgPriceRatio)
+                                           self.params.targetNodeNb, None, refDensity, refRecipro, 
+                                           self.params.decayRate, self.params.hnRatio, self.params.priceRatio, 
+                                           refAvgUfRatio, None,
+                                           self.params.ltlRangeDensity, self.params.ltlRangeReciprocity,
+                                           self.params.linerRangeDensity, self.params.linerRangeReciprocity,
+                                           self.params.railRangeDensity, self.params.railRangeReciprocity,
+                                           self.params.expressRangeDensity, self.params.expressRangeReciprocity)
         generator = NetworkGenerator(self.seed, genParams)
 
         minScore = float("inf")
@@ -160,30 +164,25 @@ class NetworkGenerator:
 
         return listNetworks
 
-    def generate(self, id=None):
+    def generate(self):
         """
         Generate a single network according to configured parameters.
 
         Depending on settings, produces either a random or structured
         hub-and-spoke network and ensures weak connectivity.
 
-        Args:
-            id (int, optional): Identifier to reproduce a specific random instance.
-
         Returns:
             Network: The generated directed network.
 
         Notes:
             - Automatically computes target arc count and reciprocity if not specified.
-            - Can optionally visualize the generated layout for debugging.
+            - Can optionally visualize the generated layout.
         """
-        # Set seed for reproductibility.
-        networkSeed = self.rng.randint(0, 2**32-1)
-        if (id is not None):
-            for i in range(id-1): # Handle reproductibility of a specific network.
-                networkSeed = self.rng.randint(0, 2**32-1)
-        np.random.seed(networkSeed)
-        random.seed(networkSeed)
+        # Set seed for reproducibility.
+        if self.seed is not None:
+            networkSeed = self.rng.randint(0, 2**32-1)
+            np.random.seed(networkSeed)
+            random.seed(networkSeed)
 
         # Override density and reciprocity based on application type.
         if (self.params.applicationType == ApplicationType.EXPRESS):
@@ -235,13 +234,28 @@ class NetworkGenerator:
         Notes:
             Uses `targetReciprocity` if specified.
         """
-
+        # Set reciprocity if used.
         useReciprocity = self.params.targetReciprocity is not None
         if useReciprocity:
             self.adjustedR = self.params.targetReciprocity/(2-self.params.targetReciprocity)
         
+        # Generate random nodes.
         random_points = np.random.rand(self.params.targetNodeNb, 2)
-        self.nodes.extend(Node(x, y, 0) for x, y in random_points)
+
+        # Set default bounding box if not used.
+        width=1
+        height=1
+        if self.params.bboxWidth is not None and self.params.bboxHeight is not None:
+            width=self.params.bboxWidth
+            height=self.params.bboxHeight
+
+        # Save nodes with scaled coordinates.
+        for x, y in random_points:
+            x = round(x * width, 5)
+            y = round(y * height, 5)
+            self.nodes.append(Node(x, y, 0))
+
+        # Generate random od pairs.
         allPairs = list(permutations(range(self.params.targetNodeNb),2))
         random.shuffle(allPairs)
         for i, j in allPairs:
@@ -494,16 +508,16 @@ class NetworkGenerator:
         candidatePairs += self.enumerate_list_pairs(self.clusteredNodesId[clusterNb-1])
         self.generate_shuffle_reciprocity_arcs(candidatePairs, arcBudget)
 
-    def enumerate_list_pairs(self, list):
+    def enumerate_list_pairs(self, nodeList):
         """
         Enumerate unconnected candidate node pairs within the same cluster.
         """
         nodePairs = []
-        for i in range(len(list)-1):
-            for j in range(i+1, len(list)):
-                if (list[i],list[j]) in self.pairs or (list[j],list[i]) in self.pairs:
+        for i in range(len(nodeList)-1):
+            for j in range(i+1, len(nodeList)):
+                if (nodeList[i],nodeList[j]) in self.pairs or (nodeList[j],nodeList[i]) in self.pairs:
                     continue
-                nodePairs.append((list[i],list[j]))
+                nodePairs.append((nodeList[i],nodeList[j]))
         
         return nodePairs
 
@@ -551,15 +565,11 @@ class NetworkGenerator:
         """
         Compute Euclidean distance between two nodes using bounding box scale if specified.
         """
-        width=1
-        height=1
-        if self.params.bboxWidth is not None and self.params.bboxHeight is not None:
-            width=self.params.bboxWidth
-            height=self.params.bboxHeight
-        xI = self.nodes[iId].x * width
-        xJ = self.nodes[jId].x * width
-        yI = self.nodes[iId].y * height
-        yJ = self.nodes[jId].y * height
+        xI = self.nodes[iId].x
+        xJ = self.nodes[jId].x
+        yI = self.nodes[iId].y
+        yJ = self.nodes[jId].y
+
         xx = xI - xJ
         yy = yI - yJ
         return math.sqrt(xx**2 + yy**2)
@@ -568,7 +578,7 @@ class NetworkGenerator:
         """
         Compute fixed and unit costs proportional to arc length.
         """
-        fixedCost = round(distance*0.5*60*0.55,5)
+        fixedCost = round(distance*self.params.priceRatio,5)
         unitCost = round(self.params.ufCostRatio*fixedCost/self.params.capacity, 5)
         return (fixedCost, unitCost)
     
@@ -669,7 +679,7 @@ class NetworkGenerator:
         plt.scatter(spokes[:, 0], spokes[:, 1], color='black', marker='x', s=50, edgecolors='white', label="Spokes", zorder=2)
         plt.scatter(hubs[:, 0], hubs[:, 1], color='red', marker='o', s=150, edgecolors='white', label="Hubs", zorder=2)
 
-        plt.xlim(0, self.params.bboxHeight)
+        plt.xlim(0, self.params.bboxWidth)
         plt.ylim(0, self.params.bboxHeight)
         plt.legend()
         plt.gca().set_aspect('equal', adjustable='box')

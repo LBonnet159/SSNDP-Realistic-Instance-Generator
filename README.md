@@ -1,7 +1,7 @@
 # SSNDP-Realistic-Instance-Generator
 This archive is distributed under the MIT license.
 
-The software and data in this repository were used in the research reported in the article "An Open-Source Generator for Realistic Instances of the Scheduled Service Network Design Problem" by Louis Bonnet, Simon Belieres, Mike Hewitt, and Sandra Ulrich Ngueveu.
+The software and data in this repository are a snapshot of the software and data that were used in the research reported on in the paper "An Open-Source Generator for Realistic Instances of the Scheduled Service Network Design Problem" by L. Bonnet, S. Belieres, M. Hewitt, and S. U. Ngueveu.
 
 ## Overview
 The Service Network Design Problem (SNDP), and its timed variant the Scheduled SNDP (SSNDP), are challenging optimization problems arising in freight transportation systems. This software generates realistic instances with hub-and-spoke networks for these problems with some of its parameters based metrics from the literature on Complex Networks and Complex Networks Analysis.
@@ -15,14 +15,15 @@ Networks and instances can be generated using __controlled parameters__ that gov
 ## Repository Structure
 
 ```bash
+├── environment.yml          # Environment configuration for conda.
+├── requirements.txt         # Environment requirements for pip.
+
 src/
     ├── Config.py                # Configuration parsing and validation
     ├── Structures.py            # Core data structures (nodes, arcs, commodities)
     ├── NetworkGenerator.py      # Network generator (hub-and-spoke, random, and emulation)
     ├── InstanceGenerator.py     # Instance and demand generator
     ├── main.py                  # Entry point for execution
-    ├── environment.yml          # Environment configuration for conda.
-    ├── requirements.txt         # Environment requirements for pip.
     └── Config.txt               # Configuration file
 
 data/
@@ -71,6 +72,7 @@ The file is organized in three sections:
 | `targetReciprocity`         | float ∈ [0,1] | Desired proportion of bidirectional arcs                                 |
 | `decayRate`                 | float > 0     | Decay rate controlling how spread out clusters are                       |
 | `hnRatio`                   | float ∈ (0,1] | Ratio of hub nodes to total nodes                                        |
+| `priceRatio`                | float > 0     | Conversion rate of distance in kilometers to fixed cost.                 |
 | `ufCostRatio`               | float > 0     | Ratio between unit and fixed costs                                       |
 | `mode`                      | int ∈ {1,2,3,4}    | Transportation mode: 1 (LTL), 2 (Liner), 3 (Rail), 4 (Express)      |
 | `ltlRangeDensity`           | (float,float) ∈ [0,1]<sup>2</sup>  | Density lower and upper bound of the LTL transportation mode networks. Default: (0.06,0.74).     |
@@ -84,20 +86,22 @@ The file is organized in three sections:
 
 ### Demand Generation Parameters
 
-| Parameter                                 | Type          | Description                                                                 |
-| ----------------------------------------- | ------------- | --------------------------------------------------------------------------- |
-| `doStatic`                                | bool          | If true, generate SNDP; otherwise, generate SSNDP                           |
-| `commodityNb`                             | int > 0       | Number of commodities                                                       |
-| `quantityToCapaMean`, `quantityToCapaDev` | float ∈ [0,1] | Mean and standard deviation of commodity size relative to arc capacity      |
-| `sameRegionRatio`                         | float ∈ [0,1] | Ratio of commodities with origin-destinations lying in the same cluster     |
-| `disparityRatio`                          | float ∈ [0,1] | Likelihood of uneven distribution of demand origins/destinations            |
-| `horizon`                                 | int > 0       | Planning horizon (time periods)                                             |
-| `flexibilityMean`, `flexibilityDev`       | float ∈ [0,1] | Distribution of time flexibility relative to shortest path                  |
-| `criticalTime`                            | int > 0       | Time rounding for available and due times                                   |
-| `distributionPattern`                     | list[float]   | Probability distribution of available times, size must be equal to horizon  |
-| `preProcessingSSNDP`                      | bool          | Whether to add preprocessing information (time windows) for SSNDP instances |
+| Parameter                                 | Type          | Description                                                                       |
+| ----------------------------------------- | ------------- | --------------------------------------------------------------------------------- |
+| `doStatic`                                | bool          | If true, generate SNDP; otherwise, generate SSNDP                                 |
+| `commodityNb`                             | int > 0       | Number of commodities                                                             |
+| `quantityToCapaMean`, `quantityToCapaDev` | float ∈ [0,1] | Mean and standard deviation of commodity size relative to arc capacity            |
+| `sameRegionRatio`                         | float ∈ [0,1] | Ratio of commodities with origin-destinations lying in the same cluster           |
+| `disparityRatio`                          | float ∈ [0,1] | Likelihood of uneven distribution of demand origins/destinations                  |
+| `horizon`                                 | int > 0       | Planning horizon in number of days                                                |
+| `discretization`                          | int > 0       | Number of homogeneous time periods in the planning horizon                        |
+| `speed`                                   | float > 0     | Vehicle speed in kilometers per hour.                                             |
+| `flexibilityMean`, `flexibilityDev`       | float ∈ [0,1] | Distribution of time flexibility relative to shortest path                        |
+| `criticalTime`                            | int > 0       | Time rounding for available and due times                                         |
+| `distributionPattern`                     | list[float]   | Probability distribution of available times, size must be equal to discretization |
+| `preProcessingSSNDP`                      | bool          | Whether to add preprocessing information (time windows) for SSNDP instances       |
 
-The range of the parameters is checked before the generation and an error is reported to the user if incoherent values are given.
+The range of the parameters is checked before the generation and a ValueError is reported to the user if incoherent values are given.
 
 In order to produce networks and instances with different inputs more easily, values given to parameters in the file [Config.txt](src/Config.txt) can
 be written as lists. For instance, if _targetDensity_=[0.2,0.5,0.8], and all other parameters have a single value (e.g. , _targetReciprocity_=0.5), three sets of configuration paremeters
@@ -126,7 +130,7 @@ Each generated network or instance file includes encoded parameters in its name.
 | Parameter           | Label |
 | ------------------- | ----- |
 | `decayRate`         | DR    |
-| `hubNodeRatio`      | A     |
+| `hnRatio`           | A     |
 | `ufCostRatio`       | UF    |
 | `targetReciprocity` | R     |
 | `targetDensity`     | D     |
@@ -152,9 +156,9 @@ Additional suffixes:
 + Prefix SNDP_ or SSNDP_ indicates the instance type
 
 Examples of outputs names:
-+ DR30_A1_UF5_R20_D5_N50_I0_S0: network with _decayRate_=30 ; _hubNodeRatio_=0.01 ; _ufCostRatio_=0.05 ; _targetReciprocity_=0.2 ; _targetDensity_=0.05 ; _targetNodeNb_=50 ; _networkIdx_=0 ; _networkSeed_=0
-+ SNDP_MCQ10_DCQ50_C100_I0_DR30_A20_UF5_R50_D50_N50_I0_S0: SNDP instance with _quantityToCapaMean_=0.1 ; _quantityToCapaDev_=0.5 ; _targetCommodityNb_=100 ; _instanceIdx_=0 ; _decayRate_=30 ; _hubNodeRatio_=0.2 ; _ufCostRatio_=0.05 ; _targetReciprocity_=0.5 ; _targetDensity_=0.5 ; _targetNodeNb_=50 ; _networkIdx_=0 ; _networkSeed_=0
-+ SSNDP_MCQ10_DCQ50_SR100_DR50_H24_FM50_FD17_CT5_C100_I0_DR30_A20_UF5_R50_D50_N50_I0_S0: SSNDP instance with _quantityToCapaMean_=0.1 ; _quantityToCapaDev_=0.5 ; _sameRegionRatio_=1.0 ; _disparityRatio_=0.5 ; _horizon_=24 ; _flexibilityMean_=0.5 ; _flexibilityDev_=0.17 ; _criticalTime_=5 ; _targetCommodityNb_=100 ; _instanceIdx_=0 ; _decayRate_=30 ; _hubNodeRatio_=0.2 ; _ufCostRatio_=0.05 ; _targetReciprocity_=0.5 ; _targetDensity_=0.5 ; _targetNodeNb_=50 ; _networkIdx_=0 ; _networkSeed_=0
++ DR30_A1_UF5_R20_D5_N50_I0_S0: network with _decayRate_=30 ; _hnRatio_=0.01 ; _ufCostRatio_=0.05 ; _targetReciprocity_=0.2 ; _targetDensity_=0.05 ; _targetNodeNb_=50 ; _networkIdx_=0 ; _networkSeed_=0
++ SNDP_MCQ10_DCQ50_C100_I0_DR30_A20_UF5_R50_D50_N50_I0_S0: SNDP instance with _quantityToCapaMean_=0.1 ; _quantityToCapaDev_=0.5 ; _targetCommodityNb_=100 ; _instanceIdx_=0 ; _decayRate_=30 ; _hnRatio_=0.2 ; _ufCostRatio_=0.05 ; _targetReciprocity_=0.5 ; _targetDensity_=0.5 ; _targetNodeNb_=50 ; _networkIdx_=0 ; _networkSeed_=0
++ SSNDP_MCQ10_DCQ50_SR100_DR50_H24_FM50_FD17_CT5_C100_I0_DR30_A20_UF5_R50_D50_N50_I0_S0: SSNDP instance with _quantityToCapaMean_=0.1 ; _quantityToCapaDev_=0.5 ; _sameRegionRatio_=1.0 ; _disparityRatio_=0.5 ; _horizon_=24 ; _flexibilityMean_=0.5 ; _flexibilityDev_=0.17 ; _criticalTime_=5 ; _targetCommodityNb_=100 ; _instanceIdx_=0 ; _decayRate_=30 ; _hnRatio_=0.2 ; _ufCostRatio_=0.05 ; _targetReciprocity_=0.5 ; _targetDensity_=0.5 ; _targetNodeNb_=50 ; _networkIdx_=0 ; _networkSeed_=0
 
 #### Output files structure
 The file structure of the outputs of the generator follows the structure:
@@ -183,7 +187,6 @@ time window id, commodity id, arc id, lower bound, upper bound
 ...
 ```
 Some remarks:
-+ The cluster id value is not given in the case of a random network.
 + The x and y coordinates are not given if no bounding box width and heigth was specified.
 + The arc distance, in network files, is an euclidean distance represented by float numbers. It is not given in SNDP instance files. It is given as a number of time period in SSNDP instance files.
 + The horizon is only given for SSNDP instance files.

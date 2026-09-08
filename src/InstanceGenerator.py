@@ -39,7 +39,7 @@ class InstanceGenerator:
         Generate an SNDP or SSNDP instance based on the input network.
 
         Steps:
-            1. Convert arc distances into travel times (normalized to the length of the planning horizon).
+            1. Convert arc distances into travel times.
             2. Compute all-pairs travel times.
             3. Identify valid origin–destination pairs and apply selection filters based on configuration parameters.
             4. Generate commodities with quantities and (for SSNDP) time windows.
@@ -48,16 +48,15 @@ class InstanceGenerator:
         Raises:
             ValueError: If fewer feasible commodities exist than requested.
         """
-        # Find longest arc.
-        longestArcDist = 0.0
-        for arc in self.network.arcs:
-            if arc.distance > longestArcDist:
-                longestArcDist = arc.distance
+        if self.seed is not None:
+            np.random.seed(self.seed)
+            random.seed(self.seed)
 
-        # Set longest (in distance) arc to take 0.2 of the horizon (in time). Apply to all arcs. 
-        convRate = (self.params.horizon*0.2)/longestArcDist
+        # Set arcs transit time.
+        periodDuration = self.params.horizon * 24 / self.params.discretization # hours
         for arc in self.network.arcs:
-            arc.time = math.ceil(arc.distance*convRate)
+            travelTime = arc.distance / self.params.speed # hours
+            arc.time = math.ceil(travelTime / periodDuration) # number of periods
 
         # Generate quantity of all commodities.
         quantities = self.generate_commodities_quantities()
@@ -65,10 +64,6 @@ class InstanceGenerator:
         # Compute travel times between all pairs, derive candidate commodity pairs in static network.
         travelTimes = self.compute_travel_times()
         validPairs = list(map(tuple, np.argwhere((travelTimes != np.inf) & (travelTimes != 0))))
-        meanTravelTime = 0.0
-        for pair in validPairs:
-            meanTravelTime += travelTimes[pair[0],pair[1]]
-        meanTravelTime /= len(validPairs)
         random.shuffle(validPairs)
         
         # Filter candidates according to user options. 
@@ -81,11 +76,9 @@ class InstanceGenerator:
             staticPairs = random.sample(candidates, self.params.commodityNb)
             self.commodities.extend(Commodity(src, dest, quantity) for (src, dest), quantity in zip(staticPairs, quantities))
         else:
-            flexibleTimes = self.generate_flexible_times(meanTravelTime)
-            uniqueFlexibleTimes = np.unique(flexibleTimes)
-            tuples = self.generate_timed_commodities(candidates, travelTimes, uniqueFlexibleTimes)
+            timedTuples = self.generate_timed_commodities(candidates, travelTimes)
             self.commodities.extend(Commodity(src, dest, quantity, avTime, dueTime) 
-                                    for (src, dest, avTime, dueTime), quantity in zip(tuples, quantities))
+                                    for (src, dest, avTime, dueTime), quantity in zip(timedTuples, quantities))
             if self.params.preProcessingSSNDP:
                 self.generate_preprocessings()
 
@@ -139,6 +132,7 @@ class InstanceGenerator:
             i += 1
         if not self.params.doStatic:
             f.write(f"horizon={self.params.horizon}\n")
+            f.write(f"discretization={self.params.discretization}\n")
         if self.params.distributionPattern is not None:
             f.write(f"distribution_pattern={self.params.distributionPattern}\n")
         if len(self.timeWindowsNode) > 0:
@@ -192,9 +186,10 @@ class InstanceGenerator:
 
         if not self.params.doStatic:
             h=str(self.params.horizon)
+            d=str(self.params.discretization)
             fm=str(int(self.params.flexibilityMean*100))
             fd=str(int(self.params.flexibilityDev*100))
-            fileName += f"_H{h}_FM{fm}_FD{fd}"
+            fileName += f"_H{h}_D{d}_FM{fm}_FD{fd}"
             if self.params.criticalTime is not None:
                 ct=str(int(self.params.criticalTime))
                 fileName+=f"_CT{ct}"
@@ -202,95 +197,6 @@ class InstanceGenerator:
         c=str(self.params.commodityNb)
         fileName += f"_C{c}_I{str(id)}_{basename}"
         return fileName
-
-    def enumerate_timed_commodities(self, validPairs, travelTimes, flexibleTime):
-        """
-        Enumerate all feasible timed commodities for SSNDP.
-
-        For each valid pair, generate all (available, due) time combinations
-        within the horizon, applying flexibility and critical-time rounding
-        if the options are activated.
-
-        Args:
-            validPairs (list[tuple[int,int]]): Valid origin–destination pairs.
-            travelTimes (np.ndarray): Matrix of travel times.
-            flexibleTime (np.ndarray): Array of possible flexibility times.
-
-        Returns:
-            list[tuple[int,int,int,int]]: Feasible (src, dest, available, due) tuples.
-
-        Raises:
-            ValueError: If unfeasible timing combinations are produced.
-        """
-        timedCandidates = []
-        for src, dest in validPairs:
-            L = int(travelTimes[src][dest])
-            for f in flexibleTime:
-                maxStart = self.params.horizon - 1 - f - L
-                if maxStart < 0:
-                    continue
-                # Enumerate all possible available times
-                for e in range(maxStart + 1):
-                    l = e + L + f
-                    if l >= self.params.horizon:
-                        continue
-                    
-                    if self.params.criticalTime is not None and self.params.criticalTime > 1:
-                        e = math.floor(e / self.params.criticalTime) * self.params.criticalTime
-                        l = math.ceil(l / self.params.criticalTime) * self.params.criticalTime
-                        if l >= self.params.horizon:
-                            continue
-                    
-                    timedCandidates.append((src, dest, e, l))
-        
-        return timedCandidates
-
-    def generate_timed_commodities(self, validPairs, travelTimes, flexibleTime):
-        """
-        Select a subset of feasible timed commodities.
-
-        Args:
-            validPairs (list[tuple[int,int]]): Valid origin destination pairs.
-            travelTimes (np.ndarray): Travel times matrix.
-            flexibleTime (np.ndarray): Array of possible flexibility times.
-
-        Returns:
-            list[tuple[int,int,int,int]]: Selected timed commodities.
-
-        Raises:
-            ValueError: If not enough feasible timed commodities exist.
-        """
-
-        # Enumerate all possible timed commodities.
-        candidates = self.enumerate_timed_commodities(validPairs, travelTimes, flexibleTime)
-        if len(candidates) < self.params.commodityNb:
-            raise ValueError(f"Only {len(candidates)} feasible commodities exist, less than requested {self.params.commodityNb}.")
-        
-        # Select candidates according to user specified options.
-        selected = []
-        if self.params.distributionPattern is not None:
-            selected = self.distribution_pattern_generation(candidates)
-        else:
-            selected = random.sample(candidates, self.params.commodityNb)
-        return selected
-
-    def generate_flexible_times(self, meanTravelTime):
-        """
-        Generate a flexible time for each commodity. The flexible time
-        can be defined as the time between a commodity due time, and the earliest time
-        at which it can reach its destination.
-
-        Args:
-            meanTravelTime: Mean travel time between any node pair of the transportation network.
-
-        Returns:
-            flexibleTimes: Array of flexible time per commodity.
-        """
-        meanFlex=meanTravelTime*self.params.flexibilityMean
-        stdDevFlex=meanFlex*self.params.flexibilityDev
-        flexibleTimes = np.random.normal(loc=meanFlex, scale=stdDevFlex, size=self.params.commodityNb)
-        flexibleTimes = np.ceil(np.maximum(flexibleTimes, 0)).astype(int) # Set value below 0 to 0.
-        return flexibleTimes
 
     def generate_commodities_quantities(self):
         """
@@ -324,14 +230,16 @@ class InstanceGenerator:
         allPairTime = InstanceGenerator.compute_all_pair_time(len(self.network.nodes), self.network.arcs)
 
         # Check horizon is valid.
-        maxFiniteDistances=[]
-        for item in allPairTime.tolist():
-            maxFiniteDistances.append(max(d for d in item if d != np.inf))
-        maxPath=max(d for d in maxFiniteDistances if d != np.inf)
-        if (maxPath>=self.params.horizon):
-            raise Exception(f"Horizon not large enough for the size of the time-expanded network." \
-            "Longest path = {maxPath} ; Horizon = {horizon}. Reduce network or enlarge horizon.")
-        
+        finiteTimes = allPairTime[np.isfinite(allPairTime)]
+        maxPath = np.max(finiteTimes)
+
+        if maxPath >= self.params.discretization:
+            raise Exception(
+                f"Horizon not large enough for the size of the time-expanded network. "
+                f"Longest path = {maxPath} periods; "
+                f"Discretization = {self.params.discretization} periods."
+            )
+
         return allPairTime
     
     @staticmethod
@@ -513,50 +421,72 @@ class InstanceGenerator:
 
         return selected
     
-    def distribution_pattern_generation(self, candidates):
+    def generate_timed_commodities(self, candidates, travelTimes):
         """
-        Select timed commodities according to a temporal distribution pattern.
+        Generate timed commodities for a SSNDP instance. While loop may take longer if
+        the number of commodities asked is high compared to the max possible as it operates
+        by draw and rejection.
 
         Args:
-            candidates (list[tuple[int,int,int,int]]): All feasible timed commodities.
+            candidates (list[tuple[int,int,int,int]]): All feasible origin destination pairs considered.
+            travelTimes (np.ndarray): Matrix of travel times between origin destination pairs considered.
 
         Returns:
-            list[tuple[int,int,int,int]]: Selected commodities matching the distribution pattern.
-
-        Notes:
-            - Uses `params.distributionPattern` as a probability vector over time slots.
-            - If insufficient candidates exist in some slots, random pairs from other time slots are used
-              as a fallback, a warning is printed.
+            list[tuple[int,int,int,int]]: Timed commodities generated (source, destination, available time, due time).
         """
-        dist = np.array(self.params.distributionPattern, dtype=float)
+        # Compute the parameters of the flexibility distribution.
+        meanTravelTime = np.mean([travelTimes[src, dest] for src, dest in candidates])
+        meanFlex = meanTravelTime * self.params.flexibilityMean
+        stdDevFlex = meanFlex * self.params.flexibilityDev
+        generatedSet = set()
+        generated = []
+        while len(generated) < self.params.commodityNb:
+            # Draw an origin destination pair.
+            src, dest = random.choice(candidates)
 
-        # Group candidates by available time.
-        groupTime = {t: [] for t in range(self.params.horizon)}
-        for tup in candidates:
-            e = tup[2]
-            if e < self.params.horizon:
-                groupTime[e].append(tup)
+            # Draw a flexibility f.
+            L = int(travelTimes[src, dest])
+            maxFlex = self.params.discretization - 1 - L
+            if maxFlex == 0:
+                f = 0
+            elif stdDevFlex == 0:
+                f = min(int(round(meanFlex)), maxFlex)
+            else:
+                a = (0.0 - meanFlex) / stdDevFlex
+                b = (maxFlex - meanFlex) / stdDevFlex
+                sampledFlex = stats.truncnorm.rvs(a, b, loc=meanFlex, scale=stdDevFlex)
+                f = int(math.ceil(sampledFlex))
+                f = max(0, min(f, maxFlex))
 
-        # Compute quotas per time slot
-        targetCounts = np.round(dist * self.params.commodityNb).astype(int)
-        selected = []
+            # Draw an available time e.
+            maxAvailableTime = self.params.discretization - 1 - L - f
+            if self.params.distributionPattern is None:
+                e = random.randint(0, maxAvailableTime)
+            else:
+                probabilities = np.asarray(self.params.distributionPattern, dtype=float)
+                feasibleProbabilities = probabilities[:maxAvailableTime + 1].copy()
+                probabilitySum = feasibleProbabilities.sum()
+                feasibleProbabilities /= probabilitySum
+                e = int(np.random.choice(np.arange(maxAvailableTime + 1),p=feasibleProbabilities))
 
-        # First pass: sample within each time slot up to its quota
-        for t in range(self.params.horizon):
-            pool = groupTime.get(t, [])
-            quota = targetCounts[t]
-            if len(pool) == 0 or quota == 0:
+            # Derive a due time l based on the shortest path length L, available time e, flexibility f.
+            l = e + L + f
+            if l >= self.params.discretization:
+                raise ValueError("Invalid due time value.")
+            
+            # Round down and up, respectively, the available and due time, based on critical time (if used).
+            if (self.params.criticalTime is not None and self.params.criticalTime > 1):
+                intervalLength = self.params.discretization / self.params.criticalTime
+                e = int(math.floor(e / intervalLength) * intervalLength)
+                l = int(math.ceil(l / intervalLength) * intervalLength)
+                if l >= self.params.discretization:
+                    continue
+
+            # Check unicity of commodity and save.
+            commodityTuple = (src, dest, e, l)
+            if commodityTuple in generatedSet:
                 continue
-            chosen = random.sample(pool, min(quota, len(pool)))
-            selected.extend(chosen)
+            generatedSet.add(commodityTuple)
+            generated.append(commodityTuple)
 
-        # If still missing commodities, fill from remaining candidates randomly
-        deficit = self.params.commodityNb - len(selected)
-        if deficit > 0:
-            remaining = [c for c in candidates if c not in selected]
-            if len(remaining) < deficit:
-                print(f"Warning: only {len(remaining)} remaining candidates to fill {deficit} slots.")
-                deficit = len(remaining)
-            selected.extend(random.sample(remaining, deficit))
-
-        return selected
+        return generated
