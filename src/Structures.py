@@ -220,12 +220,12 @@ class InstanceGeneratorParams:
         # quantityToCapaMean
         if self.quantityToCapaMean is None:
             raise ValueError("Parameter quantityToCapaMean must be specified.")
-        validate_value(self.quantityToCapaMean, lambda v: v > 0, "Parameter quantityToCapaMean value must be >0.")
+        validate_value(self.quantityToCapaMean, lambda v: 0 <= v <= 1, "Parameter quantityToCapaMean value must be in [0,1].")
 
         # quantityToCapaDev
         if self.quantityToCapaDev is None:
             raise ValueError("Parameter quantityToCapaDev must be specified.")
-        validate_value(self.quantityToCapaDev, lambda v: v >= 0, "Parameter quantityToCapaDev value must be >=0.")
+        validate_value(self.quantityToCapaDev, lambda v: 0 <= v <= 1, "Parameter quantityToCapaDev value must be in [0,1].")
 
         # sameRegionRatio
         if self.sameRegionRatio is not None:
