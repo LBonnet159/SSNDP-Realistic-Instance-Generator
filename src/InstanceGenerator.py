@@ -286,6 +286,10 @@ class InstanceGenerator:
         for i in range(commodityNb):
             currentK = self.commodities[i]
             for j in range(nodeNb):
+                # No feasible path from origin to j or from j to destination.
+                if not math.isfinite(allPairTime[currentK.origin, j]) or \
+                   not math.isfinite(allPairTime[j, currentK.destination]):
+                    continue
                 lb = int(currentK.availableTime + allPairTime[currentK.origin, j])
                 ub = int(currentK.dueTime - allPairTime[j, currentK.destination])
                 if lb > ub:

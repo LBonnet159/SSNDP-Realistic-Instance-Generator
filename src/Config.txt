@@ -1,7 +1,7 @@
 +   General configuration parameters.
 defaultInstancePath=data/Instances
 defaultNetworkPath=data/Networks
-folder=TestBugGitHub
+folder=GitHubExample
 networkNb=1
 instanceNb=1
 networkSeed=0
@@ -40,7 +40,7 @@ expressRangeReciprocity=(0.19,0.81)
 
 +   Demand generation parameters.
 doStatic=False
-commodityNb=1000
+commodityNb=100
 quantityToCapaMean=0.1
 quantityToCapaDev=0.5
 sameRegionRatio=
@@ -52,4 +52,4 @@ flexibilityMean=0.5
 flexibilityDev=0.17
 criticalTime=
 distributionPattern=
-preProcessingSSNDP=True
+preProcessingSSNDP=False
