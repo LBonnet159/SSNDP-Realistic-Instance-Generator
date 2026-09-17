@@ -427,9 +427,12 @@ class InstanceGenerator:
     
     def generate_timed_commodities(self, candidates, travelTimes):
         """
-        Generate timed commodities for a SSNDP instance. While loop may take longer if
-        the number of commodities asked is high compared to the max possible as it operates
-        by draw and rejection.
+        Generate timed commodities for a SSNDP instance by drawing candidates in vectorized batches.
+        An acceptance rate is updated as candidates are accepted or not based on their unicity. It is
+        used to update the batch size to avoid looping indefinitely due to rejection.
+
+        If the number of available timed commodities gets too low, the method switches to an enumeration
+        scheme to find the last few timed commodities needed.
 
         Args:
             candidates (list[tuple[int,int,int,int]]): All feasible origin destination pairs considered.
@@ -437,60 +440,172 @@ class InstanceGenerator:
 
         Returns:
             list[tuple[int,int,int,int]]: Timed commodities generated (source, destination, available time, due time).
+
+        Raises:
+            ValueError: If a due time exceeds the discretization, or if fewer distinct timed
+                commodities are admitted by the parameters/candidate pool than requested.
+
         """
-        # Compute the parameters of the flexibility distribution.
-        meanTravelTime = np.mean([travelTimes[src, dest] for src, dest in candidates])
+        candidatesArr = np.asarray(candidates, dtype=np.int64)
+        L_all = travelTimes[candidatesArr[:, 0], candidatesArr[:, 1]].astype(np.int64)
+
+        # Compute the parameters of the flexibility distribution (unchanged).
+        meanTravelTime = L_all.mean()
         meanFlex = meanTravelTime * self.params.flexibilityMean
         stdDevFlex = meanFlex * self.params.flexibilityDev
-        generatedSet = set()
+ 
+        # Load parameters used at every iteration as local variables.
+        discretization = self.params.discretization
+        criticalTime = self.params.criticalTime
+        distributionPattern = self.params.distributionPattern
+        if distributionPattern is not None:
+            probabilities = np.asarray(distributionPattern, dtype=float)
+        target = self.params.commodityNb
+        nodeNb = len(self.network.nodes)
+ 
+        # Bit-pack a timed commodity for fast set membership.
+        def packKey(src, dest, e, l):
+            return ((src * nodeNb + dest) * discretization + e) * discretization + l
+
+        generatedKeys = set()
         generated = []
-        while len(generated) < self.params.commodityNb:
-            # Draw an origin destination pair.
-            src, dest = random.choice(candidates)
 
-            # Draw a flexibility f.
-            L = int(travelTimes[src, dest])
-            maxFlex = self.params.discretization - 1 - L
-            if maxFlex == 0:
-                f = 0
-            elif stdDevFlex == 0:
-                f = min(int(round(meanFlex)), maxFlex)
+        M = len(candidatesArr)
+        MAX_BATCH_SIZE = 200_000 # Maximum batch size due to memory size.
+        batchSize = min(max(target, 256), MAX_BATCH_SIZE)
+        lowYieldStreak = 0 # Number of consecutive batches that failed to yield any new timed commodity.
+
+        while len(generated) < target:
+            # Draw a batch of origin destination pairs among the candidates.
+            idx = np.random.randint(0, M, size=batchSize)
+            srcs = candidatesArr[idx, 0]
+            dests = candidatesArr[idx, 1]
+            L = L_all[idx]
+ 
+            # Draw a flexibility f for the whole batch at once.
+            maxFlex = discretization - 1 - L
+            f = np.zeros(batchSize, dtype=np.int64)
+            flexMask = maxFlex > 0
+            if stdDevFlex == 0:
+                f[flexMask] = np.minimum(int(round(meanFlex)), maxFlex[flexMask])
             else:
+                mf = maxFlex[flexMask]
                 a = (0.0 - meanFlex) / stdDevFlex
-                b = (maxFlex - meanFlex) / stdDevFlex
-                sampledFlex = stats.truncnorm.rvs(a, b, loc=meanFlex, scale=stdDevFlex)
-                f = int(math.ceil(sampledFlex))
-                f = max(0, min(f, maxFlex))
-
-            # Draw an available time e.
-            maxAvailableTime = self.params.discretization - 1 - L - f
-            if self.params.distributionPattern is None:
-                e = random.randint(0, maxAvailableTime)
+                b = (mf - meanFlex) / stdDevFlex
+                sampledFlex = stats.truncnorm.rvs(a, b, loc=meanFlex, scale=stdDevFlex, size=mf.shape[0])
+                fVals = np.ceil(sampledFlex).astype(np.int64)
+                f[flexMask] = np.clip(fVals, 0, mf)
+ 
+            # Draw an available time e for the whole batch at once.
+            maxAvailableTime = discretization - 1 - L - f
+            if distributionPattern is None:
+                e = (np.random.random(batchSize) * (maxAvailableTime + 1)).astype(np.int64)
             else:
-                probabilities = np.asarray(self.params.distributionPattern, dtype=float)
-                feasibleProbabilities = probabilities[:maxAvailableTime + 1].copy()
-                probabilitySum = feasibleProbabilities.sum()
-                feasibleProbabilities /= probabilitySum
-                e = int(np.random.choice(np.arange(maxAvailableTime + 1),p=feasibleProbabilities))
-
+                e = np.empty(batchSize, dtype=np.int64)
+                for m in np.unique(maxAvailableTime):
+                    mask = maxAvailableTime == m
+                    feasibleProbabilities = probabilities[:m + 1].copy()
+                    feasibleProbabilities /= feasibleProbabilities.sum()
+                    e[mask] = np.random.choice(np.arange(m + 1), size=int(mask.sum()), p=feasibleProbabilities)
+ 
             # Derive a due time l based on the shortest path length L, available time e, flexibility f.
             l = e + L + f
-            if l >= self.params.discretization:
+            if (l >= discretization).any():
                 raise ValueError("Invalid due time value.")
-            
+ 
             # Round down and up, respectively, the available and due time, based on critical time (if used).
-            if (self.params.criticalTime is not None and self.params.criticalTime > 1):
-                intervalLength = self.params.discretization / self.params.criticalTime
-                e = int(math.floor(e / intervalLength) * intervalLength)
-                l = int(math.ceil(l / intervalLength) * intervalLength)
-                if l >= self.params.discretization:
-                    continue
+            if criticalTime is not None and criticalTime > 1:
+                intervalLength = discretization / criticalTime
+                e = (np.floor(e / intervalLength) * intervalLength).astype(np.int64)
+                l = (np.ceil(l / intervalLength) * intervalLength).astype(np.int64)
+                keepMask = l < discretization
+                srcs, dests, e, l = srcs[keepMask], dests[keepMask], e[keepMask], l[keepMask]
+ 
+            # Deduplicate within the batch, then check unicity against what's already kept.
+            keys = packKey(srcs, dests, e, l)
+            keys, firstIdx = np.unique(keys, return_index=True)
+ 
+            accepted = 0
+            for k, i in zip(keys, firstIdx):
+                k = int(k)
+                if k in generatedKeys:
+                    continue # Already generated in a previous batch: reject.
+                generatedKeys.add(k)
+                generated.append((int(srcs[i]), int(dests[i]), int(e[i]), int(l[i])))
+                accepted += 1
+                if len(generated) >= target:
+                    break
+ 
+            # Adapt the next batch size to the observed acceptance rate so that
+            # we converge quickly even as the pool of unused tuples shrinks.
+            yieldRatio = accepted / batchSize
+            remaining = target - len(generated)
+            if yieldRatio > 0:
+                lowYieldStreak = 0
+                batchSize = min(max(int(remaining / yieldRatio * 1.3), 256), MAX_BATCH_SIZE)
+            else:
+                lowYieldStreak += 1
+                batchSize = min(batchSize * 4, MAX_BATCH_SIZE)
 
-            # Check unicity of commodity and save.
-            commodityTuple = (src, dest, e, l)
-            if commodityTuple in generatedSet:
-                continue
-            generatedSet.add(commodityTuple)
-            generated.append(commodityTuple)
-
+                # Random sampling struggles to find the last available commodities. We enumerate the last ones.
+                if lowYieldStreak >= 5:
+                    remainingPool = self.enumerate_available_tuples(
+                        candidatesArr, L_all, generatedKeys, discretization, criticalTime, nodeNb
+                    )
+                    if len(remainingPool) < remaining:
+                        raise ValueError(
+                            f"Unable to generate {target} unique timed commodities "
+                            f"(only {len(generated) + len(remainingPool)} distinct tuples "
+                            "are admitted by the current parameters/candidate pool)."
+                        )
+                    for src, dest, e, l in random.sample(remainingPool, remaining):
+                        generated.append((src, dest, e, l))
+                    break
+                
         return generated
+    
+    def enumerate_available_tuples(self, candidatesArr, L_all, generatedKeys, discretization, criticalTime, nodeNb):
+        """
+        Exhaustively list the timed commodities that are still available (i.e. not already in generatedKeys) given
+        the flexibility/discretization constraints, ignoring only the shape of the sampling distributions. 
+        
+        The method is used as a last-resort fallback once random batches stop finding new tuples, i.e. when the 
+        candidate pool is nearly exhausted and rejection sampling would otherwise stall.
+
+        Args:
+            candidatesArr (np.ndarray): Array of shape (n, 2) of candidate (origin, destination) pairs.
+            L_all (np.ndarray): Shortest travel time (in periods) for each pair in candidatesArr.
+            generatedKeys (set[int]): Bit-packed keys of timed commodities already generated, updated in place.
+            discretization (int): Number of periods in the time-expanded network.
+            criticalTime (int | None): Number of critical time intervals used, or None if this rounding is not used.
+            nodeNb (int): Number of nodes in the network.
+ 
+        Returns:
+            list[tuple[int,int,int,int]]: Remaining available timed commodities.
+        """
+        available = []
+        intervalLength = discretization / criticalTime if (criticalTime is not None and criticalTime > 1) else None
+        for (src, dest), L in zip(candidatesArr.tolist(), L_all.tolist()):
+            maxFlex = discretization - 1 - L
+            if maxFlex < 0:
+                continue # No feasible flexibility for this origin destination pair.
+
+            # Enumerate every reachable timed commodity for this origin destination pair.
+            for f in range(0, maxFlex + 1):
+                maxAvailableTime = discretization - 1 - L - f
+                for e in range(0, maxAvailableTime + 1):
+                    l = e + L + f
+                    # Apply critical time rounding (if used).
+                    if intervalLength is not None:
+                        e2 = int(math.floor(e / intervalLength) * intervalLength)
+                        l2 = int(math.ceil(l / intervalLength) * intervalLength)
+                        if l2 >= discretization:
+                            continue
+                        e, l = e2, l2
+                    # Check unicity and save.
+                    key = ((src * nodeNb + dest) * discretization + e) * discretization + l
+                    if key not in generatedKeys:
+                        generatedKeys.add(key)  # dedupe within this enumeration too
+                        available.append((src, dest, e, l))
+
+        return available
