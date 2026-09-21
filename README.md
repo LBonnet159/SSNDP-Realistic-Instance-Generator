@@ -70,7 +70,7 @@ The file is organized in three sections:
 | --------------------- | ------- | ------------------------------------------------------------- |
 | `defaultInstancePath` | Path    | Default path for reading/writing instances (`data/Instances`) |
 | `defaultNetworkPath`  | Path    | Default path for reading/writing networks (`data/Networks`)   |
-| `folder`              | str     | Optional subfolder for organizing runs                        |
+| `folder`              | str     | Optional folder name, will be updated or created in respective `data/Instances` and `data/Networks` paths |
 | `networkNb`           | int > 0 | Number of networks to generate                                |
 | `instanceNb`          | int > 0 | Number of instances to generate per network                   |
 | `networkSeed`         | int     | Optional seed for reproducible network generation             |
@@ -81,18 +81,18 @@ The file is organized in three sections:
 | Parameter                   | Type          | Description                                                              |
 | --------------------------- | ------------- | ------------------------------------------------------------------------ |
 | `networkEmulationPath`      | Path          | If provided, emulate an existing network instead of generating a new one |
-| `networkEmulationTimeLimit` | float > 0     | Time limit for network emulation                                         |
-| `randomGeneration`          | bool          | Whether to use random or structured hub-and-spoke generation             |
-| `capacity`                  | float > 0     | Capacity of each arc                                                     |
-| `bboxWidth`, `bboxHeight`   | float > 0     | Dimensions of the bounding box for arc distance                          |
+| `networkEmulationTimeLimit` | float > 0     | Time limit for network emulation (in seconds)                                         |
+| `randomGeneration`          | bool          | Whether to use random (true) or structured hub-and-spoke generation (false)            |
+| `capacity`                  | float > 0     | Capacity of each arc (in kilograms)                                                     |
+| `bboxWidth`, `bboxHeight`   | float > 0     | Dimensions of the bounding box for arc distance (in kilometers)                         |
 | `targetNodeNb`              | int > 0       | Number of nodes                                                          |
-| `targetArcNb`               | int > 0       | Arc budget (optional alternative to density)                             |
-| `targetDensity`             | float ∈ [0,1] | Desired network density                                                  |
+| `targetArcNb`               | int > 0       | Number of arcs (optional alternative to density)                             |
+| `targetDensity`             | float ∈ [0,1] | Desired network density, i.e., number of arcs compared to the total number possible    |
 | `targetReciprocity`         | float ∈ [0,1] | Desired proportion of bidirectional arcs                                 |
-| `decayRate`                 | float > 0     | Decay rate controlling how spread out clusters are                       |
-| `hnRatio`                   | float ∈ (0,1] | Ratio of hub nodes to total nodes                                        |
-| `priceRatio`                | float > 0     | Conversion rate of distance in kilometers to fixed cost.                 |
-| `ufCostRatio`               | float > 0     | Ratio between unit and fixed costs                                       |
+| `decayRate`                 | float > 0     | Decay rate controlling how spread out spokes are to their related hub                       |
+| `hnRatio`                   | float ∈ (0,1] | Ratio of hub nodes to total number of nodes                                        |
+| `priceRatio`                | float > 0     | Conversion rate of distance in kilometers to fixed cost in euros.                 |
+| `ufCostRatio`               | float > 0     | Ratio between arcs unit and fixed costs                                       |
 | `mode`                      | int ∈ {1,2,3,4}    | Transportation mode (optional): 1 (LTL), 2 (Liner), 3 (Rail), 4 (Express)      |
 | `ltlRangeDensity`           | (float,float) ∈ [0,1]<sup>2</sup>  | Density lower and upper bound of the LTL transportation mode networks. Default: (0.06,0.74).     |
 | `ltlRangeReciprocity`           | (float,float) ∈ [0,1]<sup>2</sup>  | Reciprocity lower and upper bound of the LTL transportation mode networks. Default: (0.71,1.0).     |
@@ -107,18 +107,18 @@ The file is organized in three sections:
 
 | Parameter                                 | Type          | Description                                                                       |
 | ----------------------------------------- | ------------- | --------------------------------------------------------------------------------- |
-| `doStatic`                                | bool          | If true, generate SNDP; otherwise, generate SSNDP                                 |
+| `doStatic`                                | bool          | Whether to generate a SNDP instance (true), or a SSNDP instance (false)                                 |
 | `commodityNb`                             | int > 0       | Number of commodities                                                             |
 | `quantityToCapaMean`, `quantityToCapaDev` | float ∈ [0,1] | Mean and standard deviation of commodity size relative to arc capacity            |
-| `sameRegionRatio`                         | float ∈ [0,1] | Ratio of commodities with origin-destinations lying in the same cluster           |
-| `disparityRatio`                          | float ∈ [0,1] | Likelihood of uneven distribution of demand origins/destinations                  |
-| `horizon`                                 | int > 0       | Planning horizon in number of days                                                |
+| `sameRegionRatio`                         | float ∈ [0,1] | Ratio of commodities with origin-destination pairs lying in the same cluster           |
+| `disparityRatio`                          | float ∈ [0,1] | Likelihood of distribution of demand origins/destinations in different clusters                  |
+| `horizon`                                 | int > 0       | Planning horizon (in days)                                                |
 | `discretization`                          | int > 0       | Number of homogeneous time periods in the planning horizon                        |
-| `speed`                                   | float > 0     | Vehicle speed in kilometers per hour.                                             |
+| `speed`                                   | float > 0     | Vehicle speed (in kilometers per hour)                                             |
 | `flexibilityMean`, `flexibilityDev`       | float ∈ [0,1] | Distribution of time flexibility relative to shortest path                        |
-| `criticalTime`                            | int > 0       | Time rounding for available and due times. Must no exceed discretization value    |
-| `distributionPattern`                     | list[float]   | Probability distribution of available times, size must be equal to discretization |
-| `preProcessingSSNDP`                      | bool          | Whether to add preprocessing information (time windows) for SSNDP instances       |
+| `criticalTime`                            | int > 0       | Time rounding for available and due times (must not exceed discretization value)    |
+| `distributionPattern`                     | list[float]   | Probability distribution of available times (size must be equal to discretization) |
+| `preProcessingSSNDP`                      | bool          | Whether to add preprocessing information (node and arc time windows) for SSNDP instances       |
 
 The validity of all the parameters of the configuration file is checked before running the generation process and a ValueError
 is reported to the user if incoherent values are given.
