@@ -2,7 +2,7 @@
 
 This archive is distributed in association with the [INFORMS Journal on Computing](https://pubsonline.informs.org/journal/ijoc) under the [MIT license](LICENSE).
 
-The software and data in this repository are a snapshot of the software and data that were used in the research reported on in the paper "An Open-Source Generator for Realistic Instances of the Scheduled Service Network Design Problem" by L. Bonnet, S. Belieres, M. Hewitt, and S. U. Ngueveu.
+The software and data in this repository are a snapshot of the software and data that were used in the research reported on in the paper [An Open-Source Generator for Realistic Instances of the Scheduled Service Network Design Problem](https://doi.org/10.1287/ijoc.2025.1704) by Louis Bonnet, Simon Belieres, Mike Hewitt, and Sandra Ulrich Ngueveu.
 
 ## Cite
 To cite the contents of this repository, please cite both the paper and the snapshot of the repository, using their respective DOIs:
